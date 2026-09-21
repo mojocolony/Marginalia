@@ -1,23 +1,60 @@
 @import url("https://fonts.googleapis.com/css2?family=EB+Garamond:wght@400;500;600;700&family=Literata:opsz,wght@7..72,400;7..72,600;7..72,700&family=Merriweather:opsz,wght@18..144,400;18..144,600;18..144,700&display=swap");
 
 :root {
-  --bg: #f3f0e9;
-  --paper: #fbfaf6;
-  --text: #272522;
-  --muted: #777168;
-  --line: #d8d2c7;
+  /* Reader app — Light */
+  --bg: #fffdfa;
+  --paper: #fffdfa;
+  --text: #25231f;
+  --muted: #817b72;
+  --line: #e4dfd7;
+  --link: #556f90;
   --reader-size: 19px;
   --reader-font: Georgia, "Times New Roman", serif;
   color-scheme: light;
 }
 
+:root[data-theme="sepia"] {
+  /* Reader app — Sepia */
+  --bg: #f4eddf;
+  --paper: #f8f2e7;
+  --text: #3e372f;
+  --muted: #817466;
+  --line: #ddd0bc;
+  --link: #556f90;
+  color-scheme: light;
+}
+
+:root[data-theme="grey"] {
+  /* Reader app — Grey. Keep this exact blue-grey. */
+  --bg: #e6ecf2;
+  --paper: #eef3f7;
+  --text: #27313a;
+  --muted: #687785;
+  --line: #ccd6df;
+  --link: #526f91;
+  color-scheme: light;
+}
+
 :root[data-theme="dark"] {
+  /* Reader app — Dark */
   --bg: #181817;
-  --paper: #211f1d;
-  --text: #e9e5dc;
+  --paper: #211f1c;
+  --text: #f2efe8;
   --muted: #aaa49a;
-  --line: #3b3833;
+  --line: #39352f;
+  --link: #aabbd0;
   color-scheme: dark;
+}
+
+:root[data-theme="eink"] {
+  /* Reader app — E-Ink */
+  --bg: #ffffff;
+  --paper: #ffffff;
+  --text: #000000;
+  --muted: #555555;
+  --line: #d1d1d1;
+  --link: #000000;
+  color-scheme: light;
 }
 
 * { box-sizing: border-box; }
@@ -241,6 +278,11 @@ button { color: inherit; cursor: pointer; background: none; border: 0; }
 #content h3 {
   font-size: 1.2em;
   margin: 1.8em 0 .5em;
+}
+
+
+#content a {
+  color: var(--link);
 }
 
 #content blockquote {
@@ -1493,4 +1535,20 @@ body {
     position: relative;
     z-index: 2;
   }
+}
+
+
+/* v0.1.13 — Reader colour themes */
+:root[data-theme="eink"] #content {
+  font-weight: 500;
+}
+
+/* The Reader E-Ink theme is deliberately monochrome. */
+:root[data-theme="eink"] #content mark.user-highlight {
+  background: #d9d9d9;
+}
+
+/* Keep dark-theme highlighting tuned for the Reader dark palette. */
+:root[data-theme="dark"] #content mark.user-highlight {
+  background: color-mix(in srgb, #d8ad38 48%, transparent);
 }

@@ -2168,14 +2168,30 @@
       `${Number(settings.size) || 19}px`
     );
 
-    document.documentElement.dataset.theme =
-      settings.theme === "dark" ? "dark" : "light";
+    const validThemes = new Set([
+      "light",
+      "sepia",
+      "grey",
+      "dark",
+      "eink"
+    ]);
+
+    const theme = validThemes.has(settings.theme)
+      ? settings.theme
+      : "light";
+
+    document.documentElement.dataset.theme = theme;
+
+    const themeColors = {
+      light: "#fffdfa",
+      sepia: "#f4eddf",
+      grey: "#e6ecf2",
+      dark: "#181817",
+      eink: "#ffffff"
+    };
 
     document.querySelector('meta[name="theme-color"]')
-      ?.setAttribute(
-        "content",
-        settings.theme === "dark" ? "#181817" : "#f3f0e9"
-      );
+      ?.setAttribute("content", themeColors[theme]);
 
     document.querySelectorAll("[data-font]").forEach(button => {
       button.setAttribute(

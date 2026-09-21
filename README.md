@@ -1,29 +1,28 @@
-# Marginalia — v0.1.12
+# Marginalia — v0.1.13
 
 ## Replace in GitHub
 
+- `index.html`
+- `styles.css`
 - `app.js`
 
-No other files need to change.
+## Reader colour themes
 
-## Fix: incomplete book folders no longer break Dropbox
+Marginalia now uses the five reading themes from the Reader app:
 
-The Dropbox connection was working. The problem was that Marginalia treated
-**every folder inside `/Marginalia` as a finished book**.
+- **Light** — `#fffdfa`
+- **Sepia** — `#f4eddf`
+- **Grey** — `#e6ecf2`
+- **Dark** — `#181817`
+- **E-Ink** — `#ffffff`
 
-The new `The Life You Can Save` folder exists in Dropbox, but it does not yet
-contain `companion.md`. Marginalia tried to download that missing file, Dropbox
-correctly returned `path_not_found`, and the app incorrectly surfaced that as a
-library/connection failure.
+The Grey theme is the exact Reader blue-grey, not a generic neutral grey.
 
-v0.1.12 changes the rule:
+The related Reader text/panel colours were also carried across so each theme
+keeps the intended contrast rather than changing only the page background.
 
-- a folder is a book only after it contains `companion.md`;
-- incomplete folders are quietly ignored;
-- they automatically appear after `companion.md` is added and the Library is
-  refreshed;
-- a missing `cover.jpg` also no longer breaks the Library; Marginalia will use
-  its normal text placeholder instead.
+Theme choice remains stored in Marginalia's existing local reading settings,
+so it persists across books and sessions.
 
-No reconnect should be necessary. After deployment, hard-refresh once and press
-**Refresh**.
+No Dropbox, bookmark, highlight, reading-position, or mobile-navigation logic
+was changed in this build.
