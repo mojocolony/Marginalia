@@ -1,5 +1,5 @@
 (()=>{"use strict";
-const C=window.READING_COMPANION_CONFIG||{},K="rc.token",P="rc.pkce",POS="rc.pos.",$=id=>document.getElementById(id);
+const C=window.MARGINALIA_CONFIG||{},K="marginalia.token",P="marginalia.pkce",POS="marginalia.pos.",$=id=>document.getElementById(id);
 const e={w:$("welcome"),l:$("library"),r:$("reader"),g:$("grid"),s:$("status"),c:$("connect"),c2:$("connect2"),toc:$("toc"),tl:$("tocLinks"),tb:$("tocButton"),bh:$("bookHead"),body:$("content")};
 let books=[],current=null;
 const show=x=>{[e.w,e.l,e.r].forEach(y=>y.hidden=y!==x);e.tb.hidden=x!==e.r};
