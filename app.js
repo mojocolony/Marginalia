@@ -23,8 +23,16 @@
     reader: $("reader"),
     grid: $("grid"),
     status: $("status"),
-    connect: $("connect"),
     connectWelcome: $("connect2"),
+    connectionButton: $("connectionButton"),
+    connectionDialog: $("connectionDialog"),
+    connectionStatus: $("connectionStatus"),
+    reconnectDropbox: $("reconnectDropbox"),
+    disconnectLibrary: $("disconnectLibrary"),
+    libraryNotice: $("libraryNotice"),
+    libraryNoticeText: $("libraryNoticeText"),
+    retryDropbox: $("retryDropbox"),
+    noticeReconnect: $("noticeReconnect"),
 
     toc: $("toc"),
     tocLinks: $("tocLinks"),
@@ -100,13 +108,109 @@
     updateBookmarkButton();
   }
 
-  function updateConnectionUI() {
-    const connected =
-      !!localStorage.getItem(KEYS.token) ||
-      !!localStorage.getItem(KEYS.refresh);
+  function clearDropboxCredentials() {
+    localStorage.removeItem(KEYS.token);
+    localStorage.removeItem(KEYS.refresh);
+    localStorage.removeItem(KEYS.expires);
+  }
 
-    e.connect.hidden = connected;
-    e.connectWelcome.hidden = connected;
+  function connectionState() {
+    const token = localStorage.getItem(KEYS.token);
+    const refresh = localStorage.getItem(KEYS.refresh);
+    const expiry = Number(localStorage.getItem(KEYS.expires) || 0);
+    const accessValid = !!token && (!expiry || Date.now() < expiry);
+
+    // Old Marginalia builds could leave an expired access token with no
+    // refresh token. Treat that as disconnected rather than hiding the
+    // reconnect controls forever.
+    if (token && expiry && Date.now() >= expiry && !refresh) {
+      localStorage.removeItem(KEYS.token);
+      localStorage.removeItem(KEYS.expires);
+      return {connected: false, refresh: false, accessValid: false};
+    }
+
+    return {
+      connected: !!refresh || accessValid,
+      refresh: !!refresh,
+      accessValid
+    };
+  }
+
+  function updateConnectionUI() {
+    const state = connectionState();
+
+    e.connectWelcome.hidden = state.connected;
+
+    if (e.connectionButton) {
+      e.connectionButton.textContent = state.connected ? "Dropbox" : "Connect Dropbox";
+    }
+
+    if (e.connectionStatus) {
+      e.connectionStatus.textContent = state.connected
+        ? "Connected. Marginalia reads the library and syncs bookmarks and highlights through Dropbox."
+        : "Not connected. Reconnect to refresh the library or open uncached commentaries.";
+    }
+
+    if (e.disconnectLibrary) {
+      e.disconnectLibrary.hidden = !state.connected;
+    }
+  }
+
+  function showLibraryNotice(message) {
+    if (!e.libraryNotice) return;
+    e.libraryNoticeText.textContent = message;
+    e.libraryNotice.hidden = false;
+  }
+
+  function hideLibraryNotice() {
+    if (!e.libraryNotice) return;
+    e.libraryNotice.hidden = true;
+    e.libraryNoticeText.textContent = "";
+  }
+
+  function friendlyDropboxMessage(status, detail = "") {
+    let summary = detail;
+
+    try {
+      const parsed = JSON.parse(detail);
+      summary =
+        parsed.error_summary ||
+        parsed.error?.[".tag"] ||
+        detail;
+    } catch {}
+
+    const lower = String(summary || "").toLowerCase();
+
+    if (status === 401) {
+      return "Dropbox authorization has expired. Reconnect Dropbox.";
+    }
+
+    if (
+      status === 403 ||
+      lower.includes("missing_scope") ||
+      lower.includes("insufficient_scope") ||
+      lower.includes("permission")
+    ) {
+      return "Dropbox permission is missing. Reconnect Dropbox after confirming read and write permissions for the app.";
+    }
+
+    if (
+      status === 409 &&
+      (lower.includes("path/not_found") ||
+       lower.includes("not_found"))
+    ) {
+      return `The Dropbox folder ${C.DROPBOX_FOLDER || "/Marginalia"} could not be found. Check the folder name or reconnect Dropbox.`;
+    }
+
+    if (status === 429) {
+      return "Dropbox is temporarily rate-limiting requests. Try again shortly.";
+    }
+
+    if (status === 0) {
+      return "Marginalia could not reach Dropbox. Check the connection and try again.";
+    }
+
+    return "Dropbox could not load the library. Try again or reconnect Dropbox.";
   }
 
   function redirectUri() {
@@ -196,7 +300,13 @@
 
   async function refreshAccessToken() {
     const refreshToken = localStorage.getItem(KEYS.refresh);
-    if (!refreshToken) return null;
+
+    if (!refreshToken) {
+      localStorage.removeItem(KEYS.token);
+      localStorage.removeItem(KEYS.expires);
+      updateConnectionUI();
+      return null;
+    }
 
     const body = new URLSearchParams({
       refresh_token: refreshToken,
@@ -211,7 +321,8 @@
     });
 
     if (!response.ok) {
-      disconnectDropbox(false);
+      clearDropboxCredentials();
+      updateConnectionUI();
       return null;
     }
 
@@ -228,7 +339,15 @@
       return existing;
     }
 
-    return await refreshAccessToken();
+    const refreshed = await refreshAccessToken();
+
+    if (!refreshed) {
+      localStorage.removeItem(KEYS.token);
+      localStorage.removeItem(KEYS.expires);
+      updateConnectionUI();
+    }
+
+    return refreshed;
   }
 
   async function api(endpoint, arg, content = false, retry = true) {
@@ -246,14 +365,22 @@
       headers["Content-Type"] = "application/json";
     }
 
-    const response = await fetch(
-      (content ? "https://content.dropboxapi.com/2/" : "https://api.dropboxapi.com/2/") + endpoint,
-      {
-        method: "POST",
-        headers,
-        body: content ? undefined : JSON.stringify(arg)
-      }
-    );
+    let response;
+
+    try {
+      response = await fetch(
+        (content ? "https://content.dropboxapi.com/2/" : "https://api.dropboxapi.com/2/") + endpoint,
+        {
+          method: "POST",
+          headers,
+          body: content ? undefined : JSON.stringify(arg)
+        }
+      );
+    } catch {
+      const error = new Error(friendlyDropboxMessage(0));
+      error.status = 0;
+      throw error;
+    }
 
     if (response.status === 401 && retry && localStorage.getItem(KEYS.refresh)) {
       localStorage.removeItem(KEYS.token);
@@ -266,9 +393,12 @@
     }
 
     if (!response.ok) {
-      const error = new Error("Dropbox request failed.");
+      const detail = await response.text();
+      const error = new Error(
+        friendlyDropboxMessage(response.status, detail)
+      );
       error.status = response.status;
-      error.detail = await response.text();
+      error.detail = detail;
       throw error;
     }
 
@@ -282,21 +412,29 @@
       throw new Error("Dropbox needs to be connected.");
     }
 
-    const response = await fetch("https://content.dropboxapi.com/2/files/upload", {
-      method: "POST",
-      headers: {
-        Authorization: "Bearer " + token,
-        "Content-Type": "application/octet-stream",
-        "Dropbox-API-Arg": JSON.stringify({
-          path,
-          mode: "overwrite",
-          autorename: false,
-          mute: true,
-          strict_conflict: false
-        })
-      },
-      body: value
-    });
+    let response;
+
+    try {
+      response = await fetch("https://content.dropboxapi.com/2/files/upload", {
+        method: "POST",
+        headers: {
+          Authorization: "Bearer " + token,
+          "Content-Type": "application/octet-stream",
+          "Dropbox-API-Arg": JSON.stringify({
+            path,
+            mode: "overwrite",
+            autorename: false,
+            mute: true,
+            strict_conflict: false
+          })
+        },
+        body: value
+      });
+    } catch {
+      const error = new Error(friendlyDropboxMessage(0));
+      error.status = 0;
+      throw error;
+    }
 
     if (response.status === 401 && retry && localStorage.getItem(KEYS.refresh)) {
       localStorage.removeItem(KEYS.token);
@@ -309,9 +447,12 @@
     }
 
     if (!response.ok) {
-      const error = new Error("Dropbox could not save annotations.");
+      const detail = await response.text();
+      const error = new Error(
+        friendlyDropboxMessage(response.status, detail)
+      );
       error.status = response.status;
-      error.detail = await response.text();
+      error.detail = detail;
       throw error;
     }
 
@@ -665,12 +806,12 @@
       if (!cached) continue;
 
       book.cover = cached;
-      const img = e.grid.querySelector(
+      const slot = e.grid.querySelector(
         `[data-book-path="${CSS.escape(book.path)}"] .coverSlot`
       );
 
-      if (img) {
-        img.outerHTML = `<img class="cover coverSlot" src="${cached}" alt="">`;
+      if (slot) {
+        slot.innerHTML = `<img class="coverImage" src="${cached}" alt="">`;
       }
     }
   }
@@ -727,12 +868,14 @@
   async function loadLibrary(force = false) {
     if (!force && books.length) {
       show(e.library);
+      hideLibraryNotice();
       renderLibrary();
       hydrateCachedCovers();
       return;
     }
 
     show(e.library);
+    hideLibraryNotice();
 
     if (!books.length) {
       const hadCache = loadCachedLibrary();
@@ -747,15 +890,18 @@
     }
 
     try {
-      if (!annotationsLoaded) {
-        await loadAnnotations();
-      }
+      const annotationPromise =
+        annotationsLoaded ? Promise.resolve() : loadAnnotations();
 
-      const folders = (await list(C.DROPBOX_FOLDER))
-        .filter(entry =>
-          entry[".tag"] === "folder" &&
-          !entry.name.startsWith("_")
-        );
+      const [folderEntries] = await Promise.all([
+        list(C.DROPBOX_FOLDER),
+        annotationPromise
+      ]);
+
+      const folders = folderEntries.filter(entry =>
+        entry[".tag"] === "folder" &&
+        !entry.name.startsWith("_")
+      );
 
       const cachedByPath = new Map(
         readLibraryCache().map(item => [item.path, item])
@@ -771,14 +917,27 @@
       writeLibraryCache(books);
       renderLibrary();
       hydrateCachedCovers();
+      hideLibraryNotice();
+      updateConnectionUI();
     } catch (error) {
+      showLibraryNotice(
+        error?.message || "Dropbox could not load the library."
+      );
+
+      // Keep a cached Library usable instead of replacing it with an error.
       if (!books.length) {
-        e.grid.innerHTML = `<p>${escapeHtml(error.message)}</p>`;
+        const hadCache = loadCachedLibrary();
+
+        if (!hadCache) {
+          e.grid.innerHTML =
+            "<p class=\"savedEmpty\">No cached library is available on this device.</p>";
+        }
+      } else {
+        renderLibrary();
+        hydrateCachedCovers();
       }
 
-      if (/connected/i.test(error.message)) {
-        e.connect.hidden = false;
-      }
+      updateConnectionUI();
     } finally {
       e.library?.classList?.remove("libraryRefreshing");
     }
@@ -793,13 +952,16 @@
       button.type = "button";
       button.dataset.bookPath = book.path;
 
-      button.innerHTML = book.cover
-        ? `<img class="cover coverSlot" src="${book.cover}" alt="">`
-        : `<div class="cover coverSlot">${escapeHtml(book.title)}</div>`;
+      const coverContent = book.cover
+        ? `<img class="coverImage" src="${book.cover}" alt="">`
+        : `<div class="coverPlaceholder">${escapeHtml(book.title)}</div>`;
 
-      button.innerHTML += `
-        <strong>${escapeHtml(book.title)}</strong>
-        <span>${escapeHtml(book.author)}</span>
+      button.innerHTML = `
+        <div class="coverFrame coverSlot">${coverContent}</div>
+        <div class="bookMeta">
+          <strong class="bookTitle">${escapeHtml(book.title)}</strong>
+          <span class="bookAuthor">${escapeHtml(book.author)}</span>
+        </div>
       `;
 
       button.addEventListener("click", () => openBook(book));
@@ -1850,25 +2012,64 @@
     applySettings(settings);
   }
 
+  async function clearPersistentLibraryCache() {
+    localStorage.removeItem(KEYS.libraryCache);
+
+    if ("caches" in window) {
+      try {
+        await caches.delete(COVER_CACHE);
+      } catch {}
+    }
+  }
+
+  function reconnectDropbox() {
+    clearDropboxCredentials();
+    annotationsLoaded = false;
+    updateConnectionUI();
+
+    try { e.connectionDialog?.close(); } catch {}
+    try { e.settingsDialog?.close(); } catch {}
+
+    connectDropbox();
+  }
+
   function disconnectDropbox(returnHome = true) {
-    localStorage.removeItem(KEYS.token);
-    localStorage.removeItem(KEYS.refresh);
-    localStorage.removeItem(KEYS.expires);
+    clearDropboxCredentials();
 
     annotationsLoaded = false;
     annotations = {version: 1, bookmarks: [], highlights: []};
+    current = null;
+
+    clearPersistentLibraryCache();
+    books = [];
 
     updateConnectionUI();
+    hideLibraryNotice();
+
+    try { e.connectionDialog?.close(); } catch {}
+    try { e.settingsDialog?.close(); } catch {}
 
     if (returnHome) {
-      e.settingsDialog.close();
       e.status.textContent = "";
       show(e.welcome);
     }
   }
 
-  e.connect.addEventListener("click", connectDropbox);
   e.connectWelcome.addEventListener("click", connectDropbox);
+
+  e.connectionButton.addEventListener("click", () => {
+    updateConnectionUI();
+    e.connectionDialog.showModal();
+  });
+
+  e.reconnectDropbox.addEventListener("click", reconnectDropbox);
+  e.disconnectLibrary.addEventListener(
+    "click",
+    () => disconnectDropbox(true)
+  );
+
+  e.retryDropbox.addEventListener("click", () => loadLibrary(true));
+  e.noticeReconnect.addEventListener("click", reconnectDropbox);
 
   $("refresh").addEventListener("click", () => loadLibrary(true));
 
@@ -2017,7 +2218,12 @@
                 loadLibrary(true);
               }
             })
-            .catch(() => {});
+            .catch(error => {
+              showLibraryNotice(
+                error?.message || "Dropbox could not check for library changes."
+              );
+              updateConnectionUI();
+            });
         } else {
           await loadLibrary(true);
         }

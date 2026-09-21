@@ -978,3 +978,314 @@ button { color: inherit; cursor: pointer; background: none; border: 0; }
 #content mark.user-highlight {
   line-height: inherit;
 }
+
+
+/* v0.1.8 — Library alignment, mobile layout, and Dropbox recovery */
+
+[hidden] {
+  display: none !important;
+}
+
+/* The app name is already in the top bar; the Library page only needs its page title. */
+#library {
+  max-width: 1040px;
+  padding-top: 42px;
+}
+
+.libraryHead {
+  align-items: center;
+  margin-bottom: 30px;
+}
+
+.libraryHead h1 {
+  margin: 0;
+  font: 600 30px/1.1 Georgia, "Times New Roman", serif;
+}
+
+.libraryActions {
+  gap: 7px;
+}
+
+.libraryActionButton {
+  min-height: 38px;
+  padding: 7px 11px;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  color: var(--muted);
+  white-space: nowrap;
+}
+
+.libraryActionButton:hover,
+.libraryActionButton:focus-visible {
+  border-color: var(--line);
+  background: var(--paper);
+  color: var(--text);
+}
+
+/* Fixed-width desktop cards prevent a two-book library from stretching across
+   huge columns. Titles reserve two lines so authors stay aligned. */
+#grid {
+  grid-template-columns: repeat(auto-fill, 190px);
+  gap: 34px 28px;
+  align-items: start;
+  justify-content: start;
+}
+
+.book {
+  width: 190px;
+  display: flex;
+  flex-direction: column;
+  align-self: start;
+  text-align: left;
+}
+
+.coverFrame {
+  width: 100%;
+  aspect-ratio: 2 / 3;
+  display: grid;
+  place-items: center;
+  overflow: hidden;
+  padding: 11px;
+  border: 1px solid var(--line);
+  border-radius: 5px;
+  background: var(--paper);
+  box-shadow: 0 9px 24px #00000018;
+}
+
+.coverImage {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+
+.coverPlaceholder {
+  display: grid;
+  place-items: center;
+  width: 100%;
+  height: 100%;
+  padding: 14px;
+  text-align: center;
+  font: 21px/1.15 Georgia, "Times New Roman", serif;
+}
+
+.bookMeta {
+  padding-top: 12px;
+}
+
+.bookTitle {
+  display: block;
+  min-height: 2.32em;
+  margin: 0;
+  font: 600 18px/1.16 Georgia, "Times New Roman", serif;
+}
+
+.bookAuthor {
+  display: block;
+  min-height: 1.25em;
+  margin-top: 5px;
+  color: var(--muted);
+  font-size: 14px;
+  line-height: 1.25;
+}
+
+/* Old .cover rules are retained for backwards safety, but new cards use the
+   coverFrame/coverImage structure above. */
+.book .cover {
+  padding: 0;
+}
+
+/* Recoverable Dropbox errors stay compact instead of replacing the Library. */
+.libraryNotice {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 18px;
+  margin: -8px 0 26px;
+  padding: 11px 13px;
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  background: var(--paper);
+  color: var(--muted);
+  font-size: 14px;
+  line-height: 1.4;
+}
+
+.libraryNoticeActions {
+  display: flex;
+  flex: 0 0 auto;
+  gap: 6px;
+}
+
+.libraryNoticeActions button,
+.secondaryButton {
+  min-height: 36px;
+  padding: 7px 10px;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  background: var(--bg);
+}
+
+.libraryNoticeActions button:hover,
+.secondaryButton:hover {
+  border-color: color-mix(in srgb, var(--text) 35%, var(--line));
+  color: var(--text);
+}
+
+.connectionDialog {
+  width: min(430px, calc(100vw - 32px));
+  padding: 0;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--paper);
+  color: var(--text);
+  box-shadow: 0 18px 60px #0004;
+}
+
+.connectionDialog::backdrop {
+  background: rgba(0, 0, 0, .3);
+}
+
+.connectionDialog form {
+  display: grid;
+  gap: 18px;
+  padding: 20px;
+}
+
+.connectionStatus {
+  margin: 0;
+  color: var(--muted);
+  font-size: 14px;
+  line-height: 1.5;
+}
+
+.connectionActions {
+  display: grid;
+  gap: 8px;
+}
+
+.connectionActions button {
+  width: 100%;
+  min-height: 42px;
+  text-align: center;
+}
+
+.borderedDangerButton {
+  padding: 8px 10px;
+  border: 1px solid color-mix(in srgb, #a94d45 38%, var(--line));
+  border-radius: 7px;
+  background: transparent;
+}
+
+.libraryRefreshing::after {
+  content: "Checking Dropbox…";
+  margin-top: 12px;
+}
+
+@media (max-width: 640px) {
+  #library {
+    padding: 26px 16px 70px;
+  }
+
+  .libraryHead {
+    display: block;
+    margin-bottom: 24px;
+  }
+
+  .libraryHead h1 {
+    font-size: 27px;
+  }
+
+  .libraryActions {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 7px;
+    margin-top: 15px;
+  }
+
+  .libraryActionButton {
+    width: 100%;
+    min-height: 44px;
+    padding: 8px 7px;
+    border-color: var(--line);
+    background: color-mix(in srgb, var(--paper) 72%, transparent);
+    text-align: center;
+    font-size: 14px;
+  }
+
+  #grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 28px 14px;
+  }
+
+  .book {
+    width: 100%;
+    min-width: 0;
+  }
+
+  .coverFrame {
+    padding: 7px;
+    border-radius: 4px;
+  }
+
+  .bookMeta {
+    padding-top: 9px;
+  }
+
+  .bookTitle {
+    min-height: 2.45em;
+    font-size: 16px;
+    line-height: 1.2;
+  }
+
+  .bookAuthor {
+    margin-top: 4px;
+    font-size: 13px;
+  }
+
+  .libraryNotice {
+    display: block;
+    margin: -5px 0 22px;
+    padding: 12px;
+  }
+
+  .libraryNoticeActions {
+    margin-top: 10px;
+  }
+
+  .libraryNoticeActions button {
+    flex: 1 1 0;
+    min-height: 42px;
+  }
+
+  .connectionDialog {
+    width: 100vw;
+    max-width: none;
+    margin: auto 0 0 0;
+    border-radius: 16px 16px 0 0;
+    border-left: 0;
+    border-right: 0;
+    border-bottom: 0;
+  }
+
+  .connectionDialog form {
+    padding: 20px 18px calc(22px + env(safe-area-inset-bottom));
+  }
+}
+
+@media (max-width: 350px) {
+  #library {
+    padding-left: 12px;
+    padding-right: 12px;
+  }
+
+  #grid {
+    gap-left: 10px;
+    gap-right: 10px;
+    column-gap: 10px;
+  }
+
+  .bookTitle {
+    font-size: 15px;
+  }
+}

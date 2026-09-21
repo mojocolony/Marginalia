@@ -35,7 +35,6 @@
         </svg>
       </button>
       <button id="settingsButton" class="topButton aaButton" type="button" aria-label="Reading settings" hidden>Aa</button>
-      <button id="connect" class="topButton" type="button">Connect Dropbox</button>
     </nav>
   </header>
 
@@ -50,16 +49,23 @@
 
     <section id="library" hidden>
       <div class="libraryHead">
-        <div>
-          <p class="kicker">LIBRARY</p>
-          <h1>Marginalia</h1>
-        </div>
+        <h1>Library</h1>
         <div class="libraryActions">
-          <button id="bookmarksView" class="quietButton" type="button">Bookmarks</button>
-          <button id="highlightsView" class="quietButton" type="button">Highlights</button>
-          <button id="refresh" class="quietButton" type="button">Refresh</button>
+          <button id="bookmarksView" class="libraryActionButton" type="button">Bookmarks</button>
+          <button id="highlightsView" class="libraryActionButton" type="button">Highlights</button>
+          <button id="refresh" class="libraryActionButton" type="button">Refresh</button>
+          <button id="connectionButton" class="libraryActionButton" type="button">Dropbox</button>
         </div>
       </div>
+
+      <div id="libraryNotice" class="libraryNotice" hidden>
+        <div id="libraryNoticeText"></div>
+        <div class="libraryNoticeActions">
+          <button id="retryDropbox" type="button">Retry</button>
+          <button id="noticeReconnect" type="button">Reconnect</button>
+        </div>
+      </div>
+
       <div id="grid"></div>
     </section>
 
@@ -180,6 +186,23 @@
   </div>
 
   <div id="toast" class="toast" role="status" aria-live="polite" hidden></div>
+
+
+  <dialog id="connectionDialog" class="connectionDialog">
+    <form method="dialog">
+      <div class="dialogHeader">
+        <strong>Dropbox</strong>
+        <button class="closeButton" value="cancel" aria-label="Close Dropbox settings">×</button>
+      </div>
+
+      <p id="connectionStatus" class="connectionStatus"></p>
+
+      <div class="connectionActions">
+        <button id="reconnectDropbox" class="secondaryButton" type="button">Reconnect Dropbox</button>
+        <button id="disconnectLibrary" class="dangerButton borderedDangerButton" type="button">Disconnect Dropbox</button>
+      </div>
+    </form>
+  </dialog>
 
   <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
   <script src="config.js"></script>
