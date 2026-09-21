@@ -972,3 +972,9 @@ button { color: inherit; cursor: pointer; background: none; border: 0; }
     height: 17px;
   }
 }
+
+
+/* v0.1.7 — highlights must never alter text spacing */
+#content mark.user-highlight {
+  line-height: inherit;
+}

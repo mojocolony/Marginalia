@@ -1627,6 +1627,16 @@
         continue;
       }
 
+      // Do not wrap structural whitespace between block elements. Turning a
+      // newline-only text node into an inline <mark> creates an anonymous line
+      // box, which visually adds extra space between paragraphs.
+      const selectedText = (group.node.nodeValue || "")
+        .slice(group.start, group.end);
+
+      if (!selectedText.trim()) {
+        continue;
+      }
+
       const range = document.createRange();
       range.setStart(group.node, group.start);
       range.setEnd(group.node, group.end);
