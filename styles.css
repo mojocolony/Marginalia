@@ -1425,3 +1425,72 @@ main,
     padding-right: 7px;
   }
 }
+
+
+/* v0.1.10 — restore native page scrolling and keep reader controls reachable */
+
+/*
+  v0.1.9 used overflow-x:hidden on html/body. On iOS that can turn the root
+  into a separate scrolling container, which breaks both sticky positioning
+  and window.scrollY-based reading-location persistence. `clip` blocks
+  horizontal overflow without creating a new scroll container.
+*/
+html,
+body {
+  overflow-x: clip;
+  overscroll-behavior-x: none;
+}
+
+body {
+  touch-action: auto;
+}
+
+/* Keep all normal scrolling on the document itself. */
+html {
+  overflow-y: visible;
+}
+
+body {
+  overflow-y: visible;
+}
+
+@media (max-width: 640px) {
+  :root {
+    --mobile-topbar-height: calc(54px + env(safe-area-inset-top));
+  }
+
+  /* On iOS Safari, fixed is more dependable here than sticky once the browser
+     chrome expands/collapses. The controls stay available at every scroll
+     position. */
+  .topbar {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    width: 100%;
+    height: var(--mobile-topbar-height);
+    padding-top: env(safe-area-inset-top);
+    z-index: 100;
+  }
+
+  main {
+    padding-top: var(--mobile-topbar-height);
+  }
+
+  #toc {
+    top: var(--mobile-topbar-height);
+    max-height: calc(100dvh - var(--mobile-topbar-height));
+  }
+
+  .tocBackdrop {
+    top: var(--mobile-topbar-height);
+    bottom: 0;
+    height: auto;
+  }
+
+  /* Ensure the action cluster never disappears behind the reader or drawer. */
+  .topActions {
+    position: relative;
+    z-index: 2;
+  }
+}

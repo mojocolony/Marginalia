@@ -13,7 +13,22 @@
     libraryCache: "marginalia.libraryCache.v1"
   };
 
-  const ANNOTATIONS_FILE = `${C.DROPBOX_FOLDER || "/Marginalia"}/_marginalia.json`;
+  let libraryRoot = null;
+
+  function configuredLibraryRoot() {
+    const raw = String(C.DROPBOX_FOLDER || "/Marginalia").trim();
+    if (!raw || raw === "/") return "";
+    return raw.startsWith("/") ? raw.replace(/\/+$/, "") : "/" + raw.replace(/\/+$/, "");
+  }
+
+  function joinDropboxPath(root, name) {
+    const cleanName = String(name || "").replace(/^\/+/, "");
+    return root ? `${root}/${cleanName}` : `/${cleanName}`;
+  }
+
+  function annotationsFilePath() {
+    return joinDropboxPath(libraryRoot ?? configuredLibraryRoot(), "_marginalia.json");
+  }
 
   const $ = id => document.getElementById(id);
 
@@ -199,7 +214,7 @@
       (lower.includes("path/not_found") ||
        lower.includes("not_found"))
     ) {
-      return `The Dropbox folder ${C.DROPBOX_FOLDER || "/Marginalia"} could not be found. Check the folder name or reconnect Dropbox.`;
+      return "Marginalia could not find its Dropbox library folder. Retry or reconnect Dropbox.";
     }
 
     if (status === 429) {
@@ -471,6 +486,40 @@
     return entries;
   }
 
+  function isDropboxPathNotFound(error) {
+    const detail = String(error?.detail || "").toLowerCase();
+    return error?.status === 409 &&
+      (detail.includes("path/not_found") || detail.includes("not_found"));
+  }
+
+  async function listLibraryRoot() {
+    if (libraryRoot !== null) {
+      return {
+        root: libraryRoot,
+        entries: await list(libraryRoot)
+      };
+    }
+
+    const configured = configuredLibraryRoot();
+
+    if (configured) {
+      try {
+        const entries = await list(configured);
+        libraryRoot = configured;
+        return {root: libraryRoot, entries};
+      } catch (error) {
+        if (!isDropboxPathNotFound(error)) throw error;
+      }
+    }
+
+    // Dropbox apps created with "App folder" access already see their app
+    // folder as API root. In that mode "/Marginalia" would incorrectly mean
+    // a second nested Marginalia folder. Fall back to the API root.
+    const entries = await list("");
+    libraryRoot = "";
+    return {root: libraryRoot, entries};
+  }
+
   async function text(path) {
     return (await api("files/download", {path}, true)).text();
   }
@@ -724,7 +773,7 @@
 
   async function loadAnnotations() {
     try {
-      const raw = await text(ANNOTATIONS_FILE);
+      const raw = await text(annotationsFilePath());
       const parsed = JSON.parse(raw);
 
       annotations = {
@@ -758,7 +807,7 @@
 
     saveQueue = saveQueue
       .catch(() => {})
-      .then(() => uploadText(ANNOTATIONS_FILE, snapshot))
+      .then(() => uploadText(annotationsFilePath(), snapshot))
       .catch(error => {
         const permissions =
           error.status === 401 ||
@@ -890,26 +939,28 @@
     }
 
     try {
-      const annotationPromise =
-        annotationsLoaded ? Promise.resolve() : loadAnnotations();
-
-      const [folderEntries] = await Promise.all([
-        list(C.DROPBOX_FOLDER),
-        annotationPromise
-      ]);
+      const {entries: folderEntries} = await listLibraryRoot();
 
       const folders = folderEntries.filter(entry =>
         entry[".tag"] === "folder" &&
         !entry.name.startsWith("_")
       );
 
+      const annotationPromise =
+        annotationsLoaded ? Promise.resolve() : loadAnnotations();
+
       const cachedByPath = new Map(
         readLibraryCache().map(item => [item.path, item])
       );
 
-      const refreshed = (await Promise.all(
-        folders.map(folder => discoverBook(folder, cachedByPath, force))
-      ))
+      const [discovered] = await Promise.all([
+        Promise.all(
+          folders.map(folder => discoverBook(folder, cachedByPath, force))
+        ),
+        annotationPromise
+      ]);
+
+      const refreshed = discovered
         .filter(Boolean)
         .sort((a, b) => a.title.localeCompare(b.title));
 
@@ -968,6 +1019,27 @@
       e.grid.appendChild(button);
     });
   }
+  function readingPositionKey(book = current) {
+    return book ? KEYS.position + book.path : null;
+  }
+
+  function saveReadingPosition() {
+    if (!current || e.reader.hidden) return;
+
+    const key = readingPositionKey();
+    if (!key) return;
+
+    localStorage.setItem(key, String(window.scrollY || document.documentElement.scrollTop || 0));
+  }
+
+  function restoreReadingPosition(book) {
+    const key = readingPositionKey(book);
+    if (!key) return;
+
+    const saved = Number(localStorage.getItem(key) || 0);
+    window.scrollTo(0, Number.isFinite(saved) ? saved : 0);
+  }
+
   async function openBook(book, target = null) {
     current = book;
     show(e.reader);
@@ -1053,10 +1125,7 @@
         return;
       }
 
-      scrollTo(
-        0,
-        Number(localStorage.getItem(KEYS.position + book.path) || 0)
-      );
+      restoreReadingPosition(book);
     });
   }
   function buildContents() {
@@ -2024,6 +2093,7 @@
 
   function reconnectDropbox() {
     clearDropboxCredentials();
+    libraryRoot = null;
     annotationsLoaded = false;
     updateConnectionUI();
 
@@ -2035,6 +2105,7 @@
 
   function disconnectDropbox(returnHome = true) {
     clearDropboxCredentials();
+    libraryRoot = null;
 
     annotationsLoaded = false;
     annotations = {version: 1, bookmarks: [], highlights: []};
@@ -2074,6 +2145,8 @@
   $("refresh").addEventListener("click", () => loadLibrary(true));
 
   $("home").addEventListener("click", () => {
+    saveReadingPosition();
+
     if (
       localStorage.getItem(KEYS.token) ||
       localStorage.getItem(KEYS.refresh)
@@ -2087,6 +2160,7 @@
   });
 
   $("back").addEventListener("click", () => {
+    saveReadingPosition();
     show(e.library);
     renderLibrary();
     hydrateCachedCovers();
@@ -2169,15 +2243,20 @@
 
   addEventListener("scroll", () => {
     if (current && !e.reader.hidden) {
-      localStorage.setItem(
-        KEYS.position + current.path,
-        String(scrollY)
-      );
-
+      saveReadingPosition();
       updateBookmarkButton();
       hideSelectionToolbar();
     }
   }, {passive: true});
+
+  // iOS can suspend a page without delivering one final scroll event.
+  // Persist again whenever the page is hidden or unloaded.
+  addEventListener("pagehide", saveReadingPosition);
+  document.addEventListener("visibilitychange", () => {
+    if (document.visibilityState === "hidden") {
+      saveReadingPosition();
+    }
+  });
 
   (async () => {
     applySettings();
@@ -2195,13 +2274,12 @@
         if (hadCache) {
           show(e.library);
 
-          // Load annotations quietly. The Library is already visible.
-          loadAnnotations().catch(() => {});
+          // Resolve whether this Dropbox app sees /Marginalia as an ordinary
+          // folder or already sees the Marginalia app folder as API root.
+          listLibraryRoot()
+            .then(({entries}) => {
+              loadAnnotations().catch(() => {});
 
-          // A lightweight root-folder check discovers added/removed books.
-          // Existing books are not re-downloaded merely to draw the Library.
-          list(C.DROPBOX_FOLDER)
-            .then(entries => {
               const remotePaths = entries
                 .filter(entry =>
                   entry[".tag"] === "folder" &&
@@ -2216,6 +2294,8 @@
 
               if (JSON.stringify(remotePaths) !== JSON.stringify(cachedPaths)) {
                 loadLibrary(true);
+              } else {
+                hideLibraryNotice();
               }
             })
             .catch(error => {
