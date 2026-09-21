@@ -1,28 +1,15 @@
-# Marginalia — v0.1.13
+# Marginalia — v0.1.14
 
 ## Replace in GitHub
 
-- `index.html`
 - `styles.css`
-- `app.js`
 
-## Reader colour themes
+## Library toolbar spacing
 
-Marginalia now uses the five reading themes from the Reader app:
+On desktop, the Library heading and Bookmarks / Highlights / Refresh / Dropbox
+controls no longer sit at opposite ends of the full-width row.
 
-- **Light** — `#fffdfa`
-- **Sepia** — `#f4eddf`
-- **Grey** — `#e6ecf2`
-- **Dark** — `#181817`
-- **E-Ink** — `#ffffff`
+The toolbar now sits immediately to the right of **Library** as one compact
+control group.
 
-The Grey theme is the exact Reader blue-grey, not a generic neutral grey.
-
-The related Reader text/panel colours were also carried across so each theme
-keeps the intended contrast rather than changing only the page background.
-
-Theme choice remains stored in Marginalia's existing local reading settings,
-so it persists across books and sessions.
-
-No Dropbox, bookmark, highlight, reading-position, or mobile-navigation logic
-was changed in this build.
+The existing mobile two-column control layout is unchanged.

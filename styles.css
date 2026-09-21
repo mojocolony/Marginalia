@@ -1552,3 +1552,23 @@ body {
 :root[data-theme="dark"] #content mark.user-highlight {
   background: color-mix(in srgb, #d8ad38 48%, transparent);
 }
+
+
+/* v0.1.14 — compact Library toolbar */
+@media (min-width: 641px) {
+  .libraryHead {
+    justify-content: flex-start;
+    align-items: center;
+    gap: 22px;
+  }
+
+  .libraryActions {
+    justify-content: flex-start;
+    gap: 2px;
+  }
+
+  .libraryActionButton {
+    padding-left: 8px;
+    padding-right: 8px;
+  }
+}
