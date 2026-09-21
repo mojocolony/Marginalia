@@ -1,4 +1,4 @@
-# Marginalia — v0.1.4
+# Marginalia — v0.1.5
 
 ## Replace in GitHub
 
@@ -6,53 +6,42 @@
 - `styles.css`
 - `app.js`
 
-Do **not** replace `config.js`, the icon files, the manifest, or `companion.md`.
+Do **not** replace `config.js`, icons, manifest, or any `companion.md`.
 
-## Dropbox permission required for bookmarks and highlights
+## Faster Library
 
-In the Dropbox App Console, enable:
+Marginalia now caches the Library catalogue locally.
 
-- `files.metadata.read`
-- `files.content.read`
-- `files.content.write`
+- On subsequent launches the Library appears immediately from cache.
+- Cached covers are restored from the browser cache.
+- Returning from a book with **← Library** no longer contacts Dropbox.
+- Opening Marginalia performs only a lightweight background check for
+  added/removed book folders.
+- Existing `companion.md` files are not downloaded just to draw the Library.
+- A commentary is downloaded when its book is actually opened.
+- **Refresh** explicitly re-reads book metadata and covers from Dropbox.
 
-After enabling `files.content.write`, existing authorization does not gain the
-new permission automatically. In Marginalia:
+The first Library load after installing v0.1.5 may still take about as long as
+before because the cache has to be created once.
 
-1. Open **Aa**.
-2. Choose **Disconnect Dropbox**.
-3. Connect Dropbox again once.
+## In-book navigation
 
-The app then keeps bookmarks and highlights in:
+The Contents drawer now has three tabs:
+
+- **Contents**
+- **Bookmarks**
+- **Highlights**
+
+Bookmarks and highlights shown there belong only to the open book. Tapping one
+jumps directly to it.
+
+The Library-level **Bookmarks** and **Highlights** buttons remain available for
+viewing annotations across the whole collection.
+
+## Existing annotation storage
+
+Bookmarks and highlights still sync through:
 
 `/Marginalia/_marginalia.json`
 
 No database is used.
-
-## v0.1.4 changes
-
-### Footnotes
-- Tapping a footnote number now opens the note in place.
-- On mobile the note appears as a bottom sheet.
-- The Notes section remains at the end of the commentary.
-- **Go to note** is available when a full jump is wanted.
-- Footnote numbers and return arrows have larger mobile hit targets.
-
-### Bookmarks
-- A bookmark button appears while reading.
-- It bookmarks the current section rather than a fragile pixel position.
-- Tapping the button again removes the bookmark.
-- The Library has a **Bookmarks** view.
-- Bookmarks are synced through Dropbox.
-
-### Highlights
-- Select text and a **Highlight** control appears.
-- Highlights are restored when the book is reopened.
-- The Library has a **Highlights** view.
-- Clicking an existing highlight offers **Remove highlight**.
-- Highlights store the selected quotation plus surrounding context rather than
-  raw character positions, making them more resilient to typography changes.
-- Highlights are synced through Dropbox.
-
-The app still keeps ordinary reading position and typography settings locally
-on each device.

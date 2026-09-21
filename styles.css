@@ -802,3 +802,102 @@ button { color: inherit; cursor: pointer; background: none; border: 0; }
     max-height: calc(72vh - 96px);
   }
 }
+
+
+/* v0.1.5 — cached library + in-book annotation tabs */
+
+.drawerTabs {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 4px;
+  margin: 0 0 18px;
+  padding: 4px;
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  background: var(--bg);
+}
+
+.drawerTab {
+  min-width: 0;
+  padding: 8px 7px;
+  border-radius: 6px;
+  font-size: 14px;
+  font-weight: 650;
+  color: var(--muted);
+}
+
+.drawerTab.active {
+  background: var(--paper);
+  color: var(--text);
+  box-shadow: 0 1px 3px #0001;
+}
+
+.drawerPane[hidden] {
+  display: none !important;
+}
+
+.drawerEmpty {
+  padding: 12px 4px;
+  color: var(--muted);
+  font-size: 14px;
+  line-height: 1.5;
+}
+
+.drawerSavedItem {
+  position: relative;
+  display: grid;
+  gap: 4px;
+  width: 100%;
+  margin-bottom: 7px;
+  padding: 10px 42px 10px 10px;
+  border-radius: 8px;
+  text-align: left;
+  line-height: 1.32;
+}
+
+.drawerSavedItem:hover {
+  background: var(--bg);
+}
+
+.drawerSavedItemTitle {
+  font-size: 15px;
+  font-weight: 650;
+}
+
+.drawerSavedItemQuote {
+  font: 14px/1.42 var(--reader-font);
+  color: var(--muted);
+}
+
+.drawerSavedDelete {
+  position: absolute;
+  right: 4px;
+  top: 4px;
+  display: grid;
+  place-items: center;
+  width: 34px;
+  height: 34px;
+  border-radius: 7px;
+  color: var(--muted);
+}
+
+.drawerSavedDelete:hover {
+  background: var(--paper);
+  color: #a94d45;
+}
+
+.libraryRefreshing::after {
+  content: "Checking Dropbox…";
+  display: block;
+  margin-top: 14px;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+@media (max-width: 640px) {
+  .drawerTab {
+    font-size: 13px;
+    padding-left: 4px;
+    padding-right: 4px;
+  }
+}

@@ -66,10 +66,19 @@
     <section id="reader" hidden>
       <aside id="toc" aria-label="Table of contents" aria-hidden="true">
         <div class="tocHeader">
-          <strong>Contents</strong>
-          <button id="closeToc" class="closeButton" type="button" aria-label="Close contents">×</button>
+          <strong id="drawerTitle">Navigate</strong>
+          <button id="closeToc" class="closeButton" type="button" aria-label="Close navigation">×</button>
         </div>
-        <nav id="tocLinks"></nav>
+        <div class="drawerTabs" role="tablist" aria-label="Book navigation">
+          <button id="contentsTab" class="drawerTab active" type="button" role="tab" aria-selected="true">Contents</button>
+          <button id="bookmarksTab" class="drawerTab" type="button" role="tab" aria-selected="false">Bookmarks</button>
+          <button id="highlightsTab" class="drawerTab" type="button" role="tab" aria-selected="false">Highlights</button>
+        </div>
+        <div id="contentsPane" class="drawerPane">
+          <nav id="tocLinks"></nav>
+        </div>
+        <div id="bookmarksPane" class="drawerPane" hidden></div>
+        <div id="highlightsPane" class="drawerPane" hidden></div>
       </aside>
       <button id="tocBackdrop" class="tocBackdrop" type="button" aria-label="Close contents" hidden></button>
 

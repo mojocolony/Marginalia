@@ -9,7 +9,8 @@
     expires: "marginalia.tokenExpires",
     pkce: "marginalia.pkce",
     settings: "marginalia.settings",
-    position: "marginalia.pos."
+    position: "marginalia.pos.",
+    libraryCache: "marginalia.libraryCache.v1"
   };
 
   const ANNOTATIONS_FILE = `${C.DROPBOX_FOLDER || "/Marginalia"}/_marginalia.json`;
@@ -30,6 +31,12 @@
     tocButton: $("tocButton"),
     closeToc: $("closeToc"),
     tocBackdrop: $("tocBackdrop"),
+    contentsTab: $("contentsTab"),
+    bookmarksTab: $("bookmarksTab"),
+    highlightsTab: $("highlightsTab"),
+    contentsPane: $("contentsPane"),
+    bookmarksPane: $("bookmarksPane"),
+    highlightsPane: $("highlightsPane"),
 
     bookmarkButton: $("bookmarkButton"),
     bookmarksView: $("bookmarksView"),
@@ -327,9 +334,37 @@
     return (await api("files/download", {path}, true)).text();
   }
 
+  const COVER_CACHE = "marginalia-covers-v1";
+
+  async function coverFromCache(path) {
+    if (!("caches" in window)) return null;
+
+    try {
+      const cache = await caches.open(COVER_CACHE);
+      const response = await cache.match(new Request(location.origin + "/__marginalia_cover__" + path));
+      if (!response) return null;
+      const blob = await response.blob();
+      return URL.createObjectURL(blob);
+    } catch {
+      return null;
+    }
+  }
+
   async function imageUrl(path) {
     try {
-      const blob = await (await api("files/download", {path}, true)).blob();
+      const response = await api("files/download", {path}, true);
+      const blob = await response.blob();
+
+      if ("caches" in window) {
+        try {
+          const cache = await caches.open(COVER_CACHE);
+          await cache.put(
+            new Request(location.origin + "/__marginalia_cover__" + path),
+            new Response(blob)
+          );
+        } catch {}
+      }
+
       return URL.createObjectURL(blob);
     } catch {
       return null;
@@ -508,6 +543,11 @@
 
     annotationsLoaded = true;
     updateBookmarkButton();
+
+    if (current && !e.reader.hidden) {
+      applyHighlightsForCurrentBook();
+      renderBookAnnotations();
+    }
   }
 
   function persistAnnotations() {
@@ -538,9 +578,114 @@
     return saveQueue;
   }
 
-  async function loadLibrary() {
+  function readLibraryCache() {
+    try {
+      const parsed = JSON.parse(localStorage.getItem(KEYS.libraryCache) || "[]");
+      return Array.isArray(parsed) ? parsed : [];
+    } catch {
+      return [];
+    }
+  }
+
+  function writeLibraryCache(items) {
+    const compact = items.map(book => ({
+      path: book.path,
+      title: book.title,
+      author: book.author,
+      coverPath: book.coverPath || `${book.path}/cover.jpg`
+    }));
+
+    localStorage.setItem(KEYS.libraryCache, JSON.stringify(compact));
+  }
+
+  async function hydrateCachedCovers() {
+    for (const book of books) {
+      if (book.cover || !book.coverPath) continue;
+
+      const cached = await coverFromCache(book.coverPath);
+      if (!cached) continue;
+
+      book.cover = cached;
+      const img = e.grid.querySelector(
+        `[data-book-path="${CSS.escape(book.path)}"] .coverSlot`
+      );
+
+      if (img) {
+        img.outerHTML = `<img class="cover coverSlot" src="${cached}" alt="">`;
+      }
+    }
+  }
+
+  function loadCachedLibrary() {
+    const cached = readLibraryCache();
+
+    if (!cached.length) return false;
+
+    books = cached.map(item => ({
+      ...item,
+      markdown: null,
+      cover: null
+    }));
+
+    renderLibrary();
+    hydrateCachedCovers();
+    return true;
+  }
+
+  async function discoverBook(folder, cachedByPath, force = false) {
+    const cached = cachedByPath.get(folder.path_lower);
+
+    if (cached && !force) {
+      return {
+        path: cached.path,
+        title: cached.title,
+        author: cached.author,
+        coverPath: cached.coverPath || `${folder.path_lower}/cover.jpg`,
+        markdown: null,
+        cover: await coverFromCache(
+          cached.coverPath || `${folder.path_lower}/cover.jpg`
+        )
+      };
+    }
+
+    // A brand-new book needs one metadata read. After that, its title/author
+    // are cached locally and future Library loads do not fetch companion.md.
+    const markdown = await text(folder.path_lower + "/companion.md");
+    const {meta} = frontMatter(markdown);
+    const coverPath =
+      folder.path_lower + "/" + (meta.cover || "cover.jpg");
+
+    return {
+      path: folder.path_lower,
+      title: meta.title || folder.name,
+      author: meta.author || "",
+      coverPath,
+      markdown: null,
+      cover: await imageUrl(coverPath)
+    };
+  }
+
+  async function loadLibrary(force = false) {
+    if (!force && books.length) {
+      show(e.library);
+      renderLibrary();
+      hydrateCachedCovers();
+      return;
+    }
+
     show(e.library);
-    e.grid.innerHTML = "<p>Loading library…</p>";
+
+    if (!books.length) {
+      const hadCache = loadCachedLibrary();
+
+      if (!hadCache) {
+        e.grid.innerHTML = "<p>Loading library…</p>";
+      }
+    }
+
+    if (force) {
+      e.library?.classList?.add("libraryRefreshing");
+    }
 
     try {
       if (!annotationsLoaded) {
@@ -553,39 +698,32 @@
           !entry.name.startsWith("_")
         );
 
-      books = (await Promise.all(folders.map(async folder => {
-        try {
-          const markdown = await text(folder.path_lower + "/companion.md");
-          const {meta} = frontMatter(markdown);
+      const cachedByPath = new Map(
+        readLibraryCache().map(item => [item.path, item])
+      );
 
-          const cover = await imageUrl(
-            folder.path_lower + "/" + (meta.cover || "cover.jpg")
-          );
-
-          return {
-            path: folder.path_lower,
-            title: meta.title || folder.name,
-            author: meta.author || "",
-            markdown,
-            cover
-          };
-        } catch {
-          return null;
-        }
-      })))
+      const refreshed = (await Promise.all(
+        folders.map(folder => discoverBook(folder, cachedByPath, force))
+      ))
         .filter(Boolean)
         .sort((a, b) => a.title.localeCompare(b.title));
 
+      books = refreshed;
+      writeLibraryCache(books);
       renderLibrary();
+      hydrateCachedCovers();
     } catch (error) {
-      e.grid.innerHTML = `<p>${escapeHtml(error.message)}</p>`;
+      if (!books.length) {
+        e.grid.innerHTML = `<p>${escapeHtml(error.message)}</p>`;
+      }
 
       if (/connected/i.test(error.message)) {
         e.connect.hidden = false;
       }
+    } finally {
+      e.library?.classList?.remove("libraryRefreshing");
     }
   }
-
   function renderLibrary() {
     e.grid.innerHTML =
       books.length ? "" : "<p>No commentaries found.</p>";
@@ -594,10 +732,11 @@
       const button = document.createElement("button");
       button.className = "book";
       button.type = "button";
+      button.dataset.bookPath = book.path;
 
       button.innerHTML = book.cover
-        ? `<img class="cover" src="${book.cover}" alt="">`
-        : `<div class="cover">${escapeHtml(book.title)}</div>`;
+        ? `<img class="cover coverSlot" src="${book.cover}" alt="">`
+        : `<div class="cover coverSlot">${escapeHtml(book.title)}</div>`;
 
       button.innerHTML += `
         <strong>${escapeHtml(book.title)}</strong>
@@ -608,12 +747,36 @@
       e.grid.appendChild(button);
     });
   }
-
-  function openBook(book, target = null) {
+  async function openBook(book, target = null) {
     current = book;
+    show(e.reader);
+
+    if (!book.markdown) {
+      e.bookHead.innerHTML = `
+        <p class="kicker">MARGINALIA</p>
+        <h1>${escapeHtml(book.title)}</h1>
+        ${book.author ? `<p class="by">${escapeHtml(book.author)}</p>` : ""}
+      `;
+      e.body.innerHTML = "<p>Loading commentary…</p>";
+
+      try {
+        book.markdown = await text(book.path + "/companion.md");
+      } catch (error) {
+        e.body.innerHTML = `<p>${escapeHtml(error.message)}</p>`;
+        return;
+      }
+    }
 
     const {meta, body} = frontMatter(book.markdown);
     const footnotes = extractFootnotes(body);
+
+    // Keep the cached library metadata current once the book has actually
+    // been opened.
+    book.title = meta.title || book.title;
+    book.author = meta.author || book.author;
+    book.coverPath =
+      book.path + "/" + (meta.cover || "cover.jpg");
+    writeLibraryCache(books);
 
     e.bookHead.innerHTML = `
       <p class="kicker">MARGINALIA</p>
@@ -629,8 +792,7 @@
     enhanceCallouts();
     buildContents();
     applyHighlightsForCurrentBook();
-
-    show(e.reader);
+    renderBookAnnotations();
 
     requestAnimationFrame(() => {
       if (target?.highlightId) {
@@ -675,7 +837,6 @@
       );
     });
   }
-
   function buildContents() {
     const seen = {};
 
@@ -708,6 +869,7 @@
   }
 
   function openContents() {
+    selectDrawerTab("contents");
     e.toc.classList.add("open");
     e.toc.setAttribute("aria-hidden", "false");
     e.tocBackdrop.hidden = false;
@@ -717,6 +879,146 @@
     e.toc.classList.remove("open");
     e.toc.setAttribute("aria-hidden", "true");
     e.tocBackdrop.hidden = true;
+  }
+
+  function selectDrawerTab(name) {
+    const mapping = {
+      contents: {
+        tab: e.contentsTab,
+        pane: e.contentsPane
+      },
+      bookmarks: {
+        tab: e.bookmarksTab,
+        pane: e.bookmarksPane
+      },
+      highlights: {
+        tab: e.highlightsTab,
+        pane: e.highlightsPane
+      }
+    };
+
+    Object.entries(mapping).forEach(([key, item]) => {
+      const active = key === name;
+      item.tab.classList.toggle("active", active);
+      item.tab.setAttribute("aria-selected", String(active));
+      item.pane.hidden = !active;
+    });
+
+    if (name !== "contents") {
+      renderBookAnnotations();
+    }
+  }
+
+  function renderBookAnnotations() {
+    if (!current) return;
+
+    const bookBookmarks = annotations.bookmarks
+      .filter(item => item.bookPath === current.path)
+      .sort((a, b) => String(a.created || "").localeCompare(String(b.created || "")));
+
+    const bookHighlights = annotations.highlights
+      .filter(item => item.bookPath === current.path)
+      .sort((a, b) => String(a.created || "").localeCompare(String(b.created || "")));
+
+    renderDrawerSaved(
+      e.bookmarksPane,
+      bookBookmarks,
+      "bookmarks"
+    );
+
+    renderDrawerSaved(
+      e.highlightsPane,
+      bookHighlights,
+      "highlights"
+    );
+  }
+
+  function renderDrawerSaved(container, items, kind) {
+    container.innerHTML = "";
+
+    if (!items.length) {
+      container.innerHTML = `<div class="drawerEmpty">No ${kind} in this book yet.</div>`;
+      return;
+    }
+
+    items.forEach(item => {
+      const wrapper = document.createElement("div");
+      wrapper.className = "drawerSavedItem";
+      wrapper.tabIndex = 0;
+      wrapper.setAttribute("role", "button");
+
+      const title =
+        kind === "bookmarks"
+          ? escapeHtml(item.heading || "Start")
+          : escapeHtml(item.sectionHeading || "Highlight");
+
+      const quote =
+        kind === "highlights"
+          ? `<div class="drawerSavedItemQuote">“${escapeHtml(item.quote)}”</div>`
+          : "";
+
+      wrapper.innerHTML = `
+        <div class="drawerSavedItemTitle">${title}</div>
+        ${quote}
+        <button class="drawerSavedDelete" type="button" aria-label="Delete">×</button>
+      `;
+
+      const open = () => {
+        closeContents();
+
+        if (kind === "bookmarks") {
+          openBook(current, {
+            anchor: item.anchor,
+            heading: item.heading
+          });
+        } else {
+          openBook(current, {
+            highlightId: item.id,
+            anchor: item.sectionAnchor,
+            heading: item.sectionHeading
+          });
+        }
+      };
+
+      wrapper.addEventListener("click", event => {
+        if (event.target.closest(".drawerSavedDelete")) return;
+        open();
+      });
+
+      wrapper.addEventListener("keydown", event => {
+        if (event.key === "Enter" || event.key === " ") {
+          event.preventDefault();
+          open();
+        }
+      });
+
+      wrapper.querySelector(".drawerSavedDelete")
+        .addEventListener("click", async event => {
+          event.stopPropagation();
+
+          if (kind === "bookmarks") {
+            annotations.bookmarks =
+              annotations.bookmarks.filter(x => x.id !== item.id);
+          } else {
+            annotations.highlights =
+              annotations.highlights.filter(x => x.id !== item.id);
+          }
+
+          renderBookAnnotations();
+          updateBookmarkButton();
+
+          try {
+            await persistAnnotations();
+            showToast(
+              kind === "bookmarks"
+                ? "Bookmark removed."
+                : "Highlight removed."
+            );
+          } catch {}
+        });
+
+      container.appendChild(wrapper);
+    });
   }
 
   function currentSection() {
@@ -783,6 +1085,7 @@
     if (existingIndex >= 0) {
       annotations.bookmarks.splice(existingIndex, 1);
       updateBookmarkButton();
+      renderBookAnnotations();
       showToast("Bookmark removed.");
     } else {
       annotations.bookmarks.push({
@@ -796,6 +1099,7 @@
       });
 
       updateBookmarkButton();
+      renderBookAnnotations();
       showToast("Bookmarked.");
     }
 
@@ -1253,6 +1557,7 @@
 
     applyHighlight(record);
     pendingHighlight = null;
+    renderBookAnnotations();
 
     showToast("Highlighted.");
 
@@ -1300,6 +1605,7 @@
 
     currentHighlightId = null;
     e.highlightDialog.close();
+    renderBookAnnotations();
     showToast("Highlight removed.");
 
     try {
@@ -1430,24 +1736,34 @@
   e.connect.addEventListener("click", connectDropbox);
   e.connectWelcome.addEventListener("click", connectDropbox);
 
-  $("refresh").addEventListener("click", loadLibrary);
+  $("refresh").addEventListener("click", () => loadLibrary(true));
 
   $("home").addEventListener("click", () => {
     if (
       localStorage.getItem(KEYS.token) ||
       localStorage.getItem(KEYS.refresh)
     ) {
-      loadLibrary();
+      show(e.library);
+      renderLibrary();
+      hydrateCachedCovers();
     } else {
       show(e.welcome);
     }
   });
 
-  $("back").addEventListener("click", loadLibrary);
+  $("back").addEventListener("click", () => {
+    show(e.library);
+    renderLibrary();
+    hydrateCachedCovers();
+  });
 
   e.tocButton.addEventListener("click", openContents);
   e.closeToc.addEventListener("click", closeContents);
   e.tocBackdrop.addEventListener("click", closeContents);
+
+  e.contentsTab.addEventListener("click", () => selectDrawerTab("contents"));
+  e.bookmarksTab.addEventListener("click", () => selectDrawerTab("bookmarks"));
+  e.highlightsTab.addEventListener("click", () => selectDrawerTab("highlights"));
 
   e.bookmarkButton.addEventListener("click", toggleBookmark);
   e.bookmarksView.addEventListener("click", () => openSaved("bookmarks"));
@@ -1535,7 +1851,38 @@
         localStorage.getItem(KEYS.token) ||
         localStorage.getItem(KEYS.refresh)
       ) {
-        await loadLibrary();
+        const hadCache = loadCachedLibrary();
+
+        if (hadCache) {
+          show(e.library);
+
+          // Load annotations quietly. The Library is already visible.
+          loadAnnotations().catch(() => {});
+
+          // A lightweight root-folder check discovers added/removed books.
+          // Existing books are not re-downloaded merely to draw the Library.
+          list(C.DROPBOX_FOLDER)
+            .then(entries => {
+              const remotePaths = entries
+                .filter(entry =>
+                  entry[".tag"] === "folder" &&
+                  !entry.name.startsWith("_")
+                )
+                .map(entry => entry.path_lower)
+                .sort();
+
+              const cachedPaths = books
+                .map(book => book.path)
+                .sort();
+
+              if (JSON.stringify(remotePaths) !== JSON.stringify(cachedPaths)) {
+                loadLibrary(true);
+              }
+            })
+            .catch(() => {});
+        } else {
+          await loadLibrary(true);
+        }
       } else {
         show(e.welcome);
       }
