@@ -1,47 +1,37 @@
-# Marginalia — v0.1.10
+# Marginalia — v0.1.11
 
 ## Replace in GitHub
 
 - `app.js`
-- `styles.css`
 
-No other files need to change.
+No CSS, HTML, config, icon, manifest, or commentary files need to change.
 
-## Fixed: mobile controls disappearing
+## Dropbox fix
 
-The reader toolbar is now fixed on iPhone/iPad instead of relying on sticky
-positioning. Navigation, Bookmark, and Aa stay reachable while reading at any
-scroll position.
+v0.1.10 made Dropbox folder detection too clever and too brittle. This version
+removes that assumption.
 
-## Fixed: reading position no longer being remembered
+Marginalia now:
 
-v0.1.9 prevented horizontal overflow with `overflow-x:hidden` on the root
-document. On iOS Safari that can create a different scrolling container, so
-`window.scrollY` no longer reliably tracked the reader.
+1. accepts either the newer `window.MARGINALIA_CONFIG` **or** the original
+   `window.READING_COMPANION_CONFIG`, so an older `config.js` cannot silently
+   break Dropbox;
+2. tries both historical library-folder names (`/Marginalia` and
+   `/Reading Companions`);
+3. if neither exists, searches Dropbox for the actual `companion.md` files and
+   infers the library root from their real paths;
+4. still supports Dropbox **App Folder** access, where the API root is already
+   the Marginalia folder;
+5. keeps a temporary backup of the OAuth PKCE verifier in localStorage as well
+   as sessionStorage, making the Dropbox return trip more reliable on mobile
+   Safari.
 
-v0.1.10 uses `overflow-x:clip` instead. Horizontal drifting remains blocked,
-but normal document scrolling is restored.
+The public Dropbox app key already used by Marginalia is also retained as a
+last-resort fallback if an older cached config file exposes the old variable
+name.
 
-Reading position is also now explicitly saved:
+This update does not change reading layout, reading-position persistence,
+bookmarks, highlights, or the v0.1.10 mobile toolbar fix.
 
-- while scrolling;
-- before returning to the Library;
-- when Safari hides/suspends the page;
-- on `pagehide`.
-
-## Fixed: false “/Marginalia could not be found” Dropbox warning
-
-Dropbox has two possible access models:
-
-1. **Full Dropbox** — `/Marginalia` is a real folder path.
-2. **App folder** — the Marginalia app folder is already exposed as API root,
-   so asking for `/Marginalia` incorrectly looks for a second nested folder.
-
-Marginalia now detects both automatically. It tries the configured
-`/Marginalia` folder first and, if Dropbox reports that path missing, falls
-back to the app-folder API root.
-
-Bookmarks/highlights use the same resolved root, so their annotation file is
-read and written in the correct place in either mode.
-
-After deployment, hard-refresh Safari once.
+After deployment, hard-refresh once. Then press **Reconnect** once on a device
+that is showing the old folder warning.

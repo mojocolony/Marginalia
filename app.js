@@ -1,7 +1,13 @@
 (() => {
   "use strict";
 
-  const C = window.MARGINALIA_CONFIG || {};
+  const C =
+    window.MARGINALIA_CONFIG ||
+    window.READING_COMPANION_CONFIG ||
+    {
+      DROPBOX_APP_KEY: "kxxz67h0akoclm9",
+      DROPBOX_FOLDER: "/Marginalia"
+    };
 
   const KEYS = {
     token: "marginalia.token",
@@ -214,7 +220,7 @@
       (lower.includes("path/not_found") ||
        lower.includes("not_found"))
     ) {
-      return "Marginalia could not find its Dropbox library folder. Retry or reconnect Dropbox.";
+      return "Marginalia could not locate the Dropbox library automatically. Retry once; if it persists, reconnect Dropbox.";
     }
 
     if (status === 429) {
@@ -247,6 +253,7 @@
 
     const verifier = base64Url(crypto.getRandomValues(new Uint8Array(64)));
     sessionStorage.setItem(KEYS.pkce, verifier);
+    localStorage.setItem(KEYS.pkce, verifier);
 
     const digest = new Uint8Array(
       await crypto.subtle.digest("SHA-256", new TextEncoder().encode(verifier))
@@ -285,7 +292,10 @@
     const code = query.get("code");
     if (!code) return;
 
-    const verifier = sessionStorage.getItem(KEYS.pkce);
+    const verifier =
+      sessionStorage.getItem(KEYS.pkce) ||
+      localStorage.getItem(KEYS.pkce);
+
     if (!verifier) {
       throw new Error("Dropbox sign-in state was lost. Connect again.");
     }
@@ -310,6 +320,7 @@
 
     storeTokenResponse(await response.json());
     sessionStorage.removeItem(KEYS.pkce);
+    localStorage.removeItem(KEYS.pkce);
     history.replaceState({}, "", location.pathname);
   }
 
@@ -492,32 +503,123 @@
       (detail.includes("path/not_found") || detail.includes("not_found"));
   }
 
-  async function listLibraryRoot() {
-    if (libraryRoot !== null) {
-      return {
-        root: libraryRoot,
-        entries: await list(libraryRoot)
-      };
+  function findPathLower(value) {
+    if (!value || typeof value !== "object") return null;
+
+    if (
+      typeof value.path_lower === "string" &&
+      value.path_lower.toLowerCase().endsWith("/companion.md")
+    ) {
+      return value.path_lower;
     }
 
-    const configured = configuredLibraryRoot();
+    for (const child of Object.values(value)) {
+      const found = findPathLower(child);
+      if (found) return found;
+    }
 
-    if (configured) {
+    return null;
+  }
+
+  async function discoverLibraryRootFromFiles() {
+    try {
+      const result = await api("files/search_v2", {
+        query: "companion.md",
+        options: {
+          filename_only: true,
+          max_results: 100
+        }
+      });
+
+      const paths = (result.matches || [])
+        .map(findPathLower)
+        .filter(Boolean);
+
+      if (!paths.length) return null;
+
+      const counts = new Map();
+
+      for (const path of paths) {
+        const parts = path.split("/").filter(Boolean);
+
+        // /Book Name/companion.md  -> API root is the library root ("")
+        // /Marginalia/Book Name/companion.md -> "/Marginalia"
+        const rootParts = parts.slice(0, -2);
+        const root = rootParts.length ? "/" + rootParts.join("/") : "";
+        counts.set(root, (counts.get(root) || 0) + 1);
+      }
+
+      return [...counts.entries()]
+        .sort((a, b) => b[1] - a[1])[0]?.[0] ?? null;
+    } catch (error) {
+      // Search is only a discovery fallback. Preserve the actual Dropbox
+      // error if authorization itself is the problem.
+      if (error?.status === 401 || error?.status === 403) throw error;
+      return null;
+    }
+  }
+
+  async function listLibraryRoot() {
+    if (libraryRoot !== null) {
       try {
-        const entries = await list(configured);
-        libraryRoot = configured;
+        return {
+          root: libraryRoot,
+          entries: await list(libraryRoot)
+        };
+      } catch (error) {
+        if (!isDropboxPathNotFound(error)) throw error;
+        libraryRoot = null;
+      }
+    }
+
+    // Try the configured path first. Older Marginalia configs used
+    // "/Reading Companions"; newer ones may use "/Marginalia".
+    const candidates = [
+      configuredLibraryRoot(),
+      "/Marginalia",
+      "/Reading Companions"
+    ].filter((value, index, array) =>
+      value && array.indexOf(value) === index
+    );
+
+    for (const candidate of candidates) {
+      try {
+        const entries = await list(candidate);
+        libraryRoot = candidate;
         return {root: libraryRoot, entries};
       } catch (error) {
         if (!isDropboxPathNotFound(error)) throw error;
       }
     }
 
-    // Dropbox apps created with "App folder" access already see their app
-    // folder as API root. In that mode "/Marginalia" would incorrectly mean
-    // a second nested Marginalia folder. Fall back to the API root.
-    const entries = await list("");
+    // The most reliable fallback is to find the actual companion.md files
+    // Dropbox can see and infer the library root from their paths.
+    const discovered = await discoverLibraryRootFromFiles();
+
+    if (discovered !== null) {
+      const entries = await list(discovered);
+      libraryRoot = discovered;
+      return {root: libraryRoot, entries};
+    }
+
+    // Finally, inspect the Dropbox API root. This covers App Folder access,
+    // where the app folder itself is already the namespace root.
+    const rootEntries = await list("");
+
+    const likelyContainer = rootEntries.find(entry =>
+      entry[".tag"] === "folder" &&
+      /^(marginalia|reading companions)$/i.test(entry.name || "")
+    );
+
+    if (likelyContainer?.path_lower) {
+      const entries = await list(likelyContainer.path_lower);
+      libraryRoot = likelyContainer.path_lower;
+      return {root: libraryRoot, entries};
+    }
+
+    // If root already contains the book folders, use it directly.
     libraryRoot = "";
-    return {root: libraryRoot, entries};
+    return {root: libraryRoot, entries: rootEntries};
   }
 
   async function text(path) {
@@ -2093,6 +2195,8 @@
 
   function reconnectDropbox() {
     clearDropboxCredentials();
+    sessionStorage.removeItem(KEYS.pkce);
+    localStorage.removeItem(KEYS.pkce);
     libraryRoot = null;
     annotationsLoaded = false;
     updateConnectionUI();
