@@ -274,6 +274,13 @@
   }[char]));
 
   function extractFootnotes(markdown) {
+    // v1.1 of the first commentary accidentally stored the separators before
+    // footnote definitions as the literal characters "\\n\\n". Normalize
+    // those separators so both that file and correctly-authored Markdown work.
+    markdown = markdown
+      .replace(/\\n\\n(?=\[\^[^\]]+\]:)/g, "\n\n")
+      .replace(/\\n\s*$/g, "");
+
     const definitions = new Map();
     const numbers = new Map();
     const order = [];
@@ -302,7 +309,7 @@
       return `<sup class="footnote-ref" id="fnref-${safe}-${count}"><a href="#fn-${safe}" aria-label="Footnote ${number}">${number}</a></sup>`;
     });
 
-    return {markdown, definitions, numbers, order};
+    return {markdown, definitions, numbers, order, referenceCounts};
   }
 
   function footnotesHtml(footnotes) {
@@ -311,7 +318,11 @@
     const items = footnotes.order.map(id => {
       const safe = id.replace(/[^a-zA-Z0-9_-]/g, "-");
       const content = marked.parseInline(footnotes.definitions.get(id) || "");
-      return `<li id="fn-${safe}">${content} <a class="footnote-back" href="#fnref-${safe}-1" aria-label="Back to text">↩</a></li>`;
+      const count = footnotes.referenceCounts.get(id) || 1;
+      const backlinks = Array.from({length: count}, (_, index) =>
+        `<a class="footnote-back" href="#fnref-${safe}-${index + 1}" aria-label="Back to reference ${index + 1}">↩</a>`
+      ).join(" ");
+      return `<li id="fn-${safe}">${content} ${backlinks}</li>`;
     }).join("");
 
     return `<section class="footnotes" aria-label="Notes"><h2>Notes</h2><ol>${items}</ol></section>`;
@@ -502,6 +513,8 @@
     const fontStacks = {
       georgia: 'Georgia, "Times New Roman", serif',
       literata: '"Literata", Georgia, "Times New Roman", serif',
+      "eb-garamond": '"EB Garamond", Georgia, "Times New Roman", serif',
+      merriweather: '"Merriweather", Georgia, "Times New Roman", serif',
       bookerly: '"Bookerly", "Literata", Georgia, "Times New Roman", serif'
     };
 

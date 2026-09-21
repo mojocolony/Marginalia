@@ -1,39 +1,33 @@
-# Marginalia — v0.1.2
+# Marginalia — v0.1.3
 
-This patch replaces the UI files from v0.1.1.
+## GitHub patch
 
-## Replace in GitHub
+Replace:
 
 - `index.html`
 - `styles.css`
 - `app.js`
 
-## Add to GitHub
+Do **not** replace `config.js`, the icon files, or the manifest.
 
-- `icon.svg`
-- `icon-180.png`
-- `icon-192.png`
-- `icon-512.png`
-- `manifest.webmanifest`
+## Dropbox commentary
 
-Do **not** replace `config.js`.
+Replace the current `Against Empathy/companion.md` with `companion-v1.2.md`
+and rename it back to `companion.md`.
+
+The commentary wording is unchanged. This only corrects the Markdown footnote
+definitions that had accidentally been stored with literal `\\n` characters.
 
 ## Changes
 
-- Contents is now a working drawer on desktop and mobile.
-- Contents typography is larger.
-- The Aa button opens reading settings instead of switching directly to dark mode.
-- Reading settings now include:
-  - Georgia
-  - Literata
-  - Bookerly (when installed locally; otherwise Literata fallback)
-  - 17, 19, 21, and 23 px text sizes
-  - Light and dark modes
-- Settings persist in local storage.
-- The Dropbox connection button disappears after connection.
-- Dropbox OAuth now requests an offline refresh token so future sessions can renew access automatically.
-  - Existing users may need to connect one more time after their old access token expires before persistent renewal is available.
-- Disconnect Dropbox is available inside Reading settings.
-- Lucide `library-big` is now used for the app/header icon, favicon, Apple touch icon, and web-app manifest icons.
+- Fixed footnote rendering so internal labels such as `[^book]`,
+  `[^bloom2017]`, and `[^measurement]` become numbered superscript notes.
+- Footnotes work in ordinary paragraphs, callouts, and list content.
+- Repeated citations reuse the same note number and have backlinks.
+- Added EB Garamond.
+- Added Merriweather.
+- Retained Georgia, Literata, and Bookerly.
+- Expanded text-size choices to 15, 17, 19, 21, 23, 25, 27, 29, and 31 px.
 
-`companion.md` does not need to change for this update.
+Bookerly still uses the locally installed font when available and otherwise
+falls back to Literata.
