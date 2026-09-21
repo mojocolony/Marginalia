@@ -12,6 +12,8 @@
     position: "marginalia.pos."
   };
 
+  const ANNOTATIONS_FILE = `${C.DROPBOX_FOLDER || "/Marginalia"}/_marginalia.json`;
+
   const $ = id => document.getElementById(id);
 
   const e = {
@@ -22,11 +24,17 @@
     status: $("status"),
     connect: $("connect"),
     connectWelcome: $("connect2"),
+
     toc: $("toc"),
     tocLinks: $("tocLinks"),
     tocButton: $("tocButton"),
     closeToc: $("closeToc"),
     tocBackdrop: $("tocBackdrop"),
+
+    bookmarkButton: $("bookmarkButton"),
+    bookmarksView: $("bookmarksView"),
+    highlightsView: $("highlightsView"),
+
     settingsButton: $("settingsButton"),
     settingsDialog: $("settingsDialog"),
     bookHead: $("bookHead"),
@@ -34,11 +42,40 @@
     disconnect: $("disconnect"),
     fontChoices: $("fontChoices"),
     sizeChoices: $("sizeChoices"),
-    themeChoices: $("themeChoices")
+    themeChoices: $("themeChoices"),
+
+    footnoteDialog: $("footnoteDialog"),
+    footnoteTitle: $("footnoteTitle"),
+    footnoteBody: $("footnoteBody"),
+    goToFootnote: $("goToFootnote"),
+
+    savedDialog: $("savedDialog"),
+    savedTitle: $("savedTitle"),
+    savedList: $("savedList"),
+
+    highlightDialog: $("highlightDialog"),
+    highlightQuote: $("highlightQuote"),
+    removeHighlight: $("removeHighlight"),
+
+    selectionToolbar: $("selectionToolbar"),
+    highlightSelection: $("highlightSelection"),
+    toast: $("toast")
   };
 
   let books = [];
   let current = null;
+  let currentFootnoteTarget = null;
+  let currentHighlightId = null;
+  let pendingHighlight = null;
+  let annotationsLoaded = false;
+  let saveQueue = Promise.resolve();
+  let toastTimer = null;
+
+  let annotations = {
+    version: 1,
+    bookmarks: [],
+    highlights: []
+  };
 
   function show(section) {
     [e.welcome, e.library, e.reader].forEach(el => {
@@ -47,13 +84,20 @@
 
     const reading = section === e.reader;
     e.tocButton.hidden = !reading;
+    e.bookmarkButton.hidden = !reading;
     e.settingsButton.hidden = !reading;
+
     closeContents();
+    hideSelectionToolbar();
     updateConnectionUI();
+    updateBookmarkButton();
   }
 
   function updateConnectionUI() {
-    const connected = !!localStorage.getItem(KEYS.token) || !!localStorage.getItem(KEYS.refresh);
+    const connected =
+      !!localStorage.getItem(KEYS.token) ||
+      !!localStorage.getItem(KEYS.refresh);
+
     e.connect.hidden = connected;
     e.connectWelcome.hidden = connected;
   }
@@ -88,7 +132,8 @@
       code_challenge: base64Url(digest),
       code_challenge_method: "S256",
       token_access_type: "offline",
-      redirect_uri: redirectUri()
+      redirect_uri: redirectUri(),
+      scope: "files.metadata.read files.content.read files.content.write"
     });
 
     location.href = "https://www.dropbox.com/oauth2/authorize?" + query;
@@ -181,6 +226,7 @@
 
   async function api(endpoint, arg, content = false, retry = true) {
     const token = await accessToken();
+
     if (!token) {
       throw new Error("Dropbox needs to be connected.");
     }
@@ -205,15 +251,64 @@
     if (response.status === 401 && retry && localStorage.getItem(KEYS.refresh)) {
       localStorage.removeItem(KEYS.token);
       localStorage.removeItem(KEYS.expires);
+
       const refreshed = await refreshAccessToken();
-      if (refreshed) return api(endpoint, arg, content, false);
+      if (refreshed) {
+        return api(endpoint, arg, content, false);
+      }
     }
 
     if (!response.ok) {
-      throw new Error("Dropbox request failed.");
+      const error = new Error("Dropbox request failed.");
+      error.status = response.status;
+      error.detail = await response.text();
+      throw error;
     }
 
     return content ? response : response.json();
+  }
+
+  async function uploadText(path, value, retry = true) {
+    const token = await accessToken();
+
+    if (!token) {
+      throw new Error("Dropbox needs to be connected.");
+    }
+
+    const response = await fetch("https://content.dropboxapi.com/2/files/upload", {
+      method: "POST",
+      headers: {
+        Authorization: "Bearer " + token,
+        "Content-Type": "application/octet-stream",
+        "Dropbox-API-Arg": JSON.stringify({
+          path,
+          mode: "overwrite",
+          autorename: false,
+          mute: true,
+          strict_conflict: false
+        })
+      },
+      body: value
+    });
+
+    if (response.status === 401 && retry && localStorage.getItem(KEYS.refresh)) {
+      localStorage.removeItem(KEYS.token);
+      localStorage.removeItem(KEYS.expires);
+
+      const refreshed = await refreshAccessToken();
+      if (refreshed) {
+        return uploadText(path, value, false);
+      }
+    }
+
+    if (!response.ok) {
+      const error = new Error("Dropbox could not save annotations.");
+      error.status = response.status;
+      error.detail = await response.text();
+      throw error;
+    }
+
+    return response.json();
   }
 
   async function list(path) {
@@ -251,9 +346,14 @@
       if (end > 0) {
         textValue.slice(3, end).trim().split(/\r?\n/).forEach(line => {
           const colon = line.indexOf(":");
+
           if (colon > 0) {
             const key = line.slice(0, colon).trim();
-            const value = line.slice(colon + 1).trim().replace(/^["']|["']$/g, "");
+            const value = line
+              .slice(colon + 1)
+              .trim()
+              .replace(/^["']|["']$/g, "");
+
             meta[key] = value;
           }
         });
@@ -274,9 +374,6 @@
   }[char]));
 
   function extractFootnotes(markdown) {
-    // v1.1 of the first commentary accidentally stored the separators before
-    // footnote definitions as the literal characters "\\n\\n". Normalize
-    // those separators so both that file and correctly-authored Markdown work.
     markdown = markdown
       .replace(/\\n\\n(?=\[\^[^\]]+\]:)/g, "\n\n")
       .replace(/\\n\s*$/g, "");
@@ -286,30 +383,43 @@
     const order = [];
     const referenceCounts = new Map();
 
-    markdown = markdown.replace(/^\[\^([^\]]+)\]:\s*(.+)$/gm, (_, id, value) => {
-      definitions.set(id.trim(), value.trim());
-      return "";
-    });
-
-    markdown = markdown.replace(/\[\^([^\]]+)\]/g, (whole, rawId) => {
-      const id = rawId.trim();
-      if (!definitions.has(id)) return whole;
-
-      if (!numbers.has(id)) {
-        numbers.set(id, order.length + 1);
-        order.push(id);
+    markdown = markdown.replace(
+      /^\[\^([^\]]+)\]:\s*(.+)$/gm,
+      (_, id, value) => {
+        definitions.set(id.trim(), value.trim());
+        return "";
       }
+    );
 
-      const number = numbers.get(id);
-      const count = (referenceCounts.get(id) || 0) + 1;
-      referenceCounts.set(id, count);
+    markdown = markdown.replace(
+      /\[\^([^\]]+)\]/g,
+      (whole, rawId) => {
+        const id = rawId.trim();
 
-      const safe = id.replace(/[^a-zA-Z0-9_-]/g, "-");
+        if (!definitions.has(id)) return whole;
 
-      return `<sup class="footnote-ref" id="fnref-${safe}-${count}"><a href="#fn-${safe}" aria-label="Footnote ${number}">${number}</a></sup>`;
-    });
+        if (!numbers.has(id)) {
+          numbers.set(id, order.length + 1);
+          order.push(id);
+        }
 
-    return {markdown, definitions, numbers, order, referenceCounts};
+        const number = numbers.get(id);
+        const count = (referenceCounts.get(id) || 0) + 1;
+        referenceCounts.set(id, count);
+
+        const safe = id.replace(/[^a-zA-Z0-9_-]/g, "-");
+
+        return `<sup class="footnote-ref" id="fnref-${safe}-${count}"><a href="#fn-${safe}" aria-label="Footnote ${number}" data-footnote-number="${number}">${number}</a></sup>`;
+      }
+    );
+
+    return {
+      markdown,
+      definitions,
+      numbers,
+      order,
+      referenceCounts
+    };
   }
 
   function footnotesHtml(footnotes) {
@@ -319,9 +429,13 @@
       const safe = id.replace(/[^a-zA-Z0-9_-]/g, "-");
       const content = marked.parseInline(footnotes.definitions.get(id) || "");
       const count = footnotes.referenceCounts.get(id) || 1;
-      const backlinks = Array.from({length: count}, (_, index) =>
-        `<a class="footnote-back" href="#fnref-${safe}-${index + 1}" aria-label="Back to reference ${index + 1}">↩</a>`
+
+      const backlinks = Array.from(
+        {length: count},
+        (_, index) =>
+          `<a class="footnote-back" href="#fnref-${safe}-${index + 1}" aria-label="Back to reference ${index + 1}">↩</a>`
       ).join(" ");
+
       return `<li id="fn-${safe}">${content} ${backlinks}</li>`;
     }).join("");
 
@@ -347,7 +461,9 @@
       if (!match) return;
 
       const key = match[1].toUpperCase();
-      firstParagraph.innerHTML = firstParagraph.innerHTML.replace(match[0], "");
+
+      firstParagraph.innerHTML =
+        firstParagraph.innerHTML.replace(match[0], "");
 
       blockquote.classList.add(
         "callout",
@@ -362,18 +478,86 @@
     });
   }
 
+  function showToast(message, timeout = 2200) {
+    clearTimeout(toastTimer);
+    e.toast.textContent = message;
+    e.toast.hidden = false;
+
+    toastTimer = setTimeout(() => {
+      e.toast.hidden = true;
+    }, timeout);
+  }
+
+  async function loadAnnotations() {
+    try {
+      const raw = await text(ANNOTATIONS_FILE);
+      const parsed = JSON.parse(raw);
+
+      annotations = {
+        version: 1,
+        bookmarks: Array.isArray(parsed.bookmarks) ? parsed.bookmarks : [],
+        highlights: Array.isArray(parsed.highlights) ? parsed.highlights : []
+      };
+    } catch (error) {
+      if (error.status === 409) {
+        annotations = {version: 1, bookmarks: [], highlights: []};
+      } else {
+        annotations = {version: 1, bookmarks: [], highlights: []};
+      }
+    }
+
+    annotationsLoaded = true;
+    updateBookmarkButton();
+  }
+
+  function persistAnnotations() {
+    annotations.version = 1;
+    annotations.updated = new Date().toISOString();
+
+    const snapshot = JSON.stringify(annotations, null, 2);
+
+    saveQueue = saveQueue
+      .catch(() => {})
+      .then(() => uploadText(ANNOTATIONS_FILE, snapshot))
+      .catch(error => {
+        const permissions =
+          error.status === 401 ||
+          error.status === 403 ||
+          /scope|permission|insufficient/i.test(error.detail || "");
+
+        showToast(
+          permissions
+            ? "Dropbox write permission is required. Enable files.content.write, then reconnect once."
+            : "Could not save annotations to Dropbox.",
+          4800
+        );
+
+        throw error;
+      });
+
+    return saveQueue;
+  }
+
   async function loadLibrary() {
     show(e.library);
     e.grid.innerHTML = "<p>Loading library…</p>";
 
     try {
+      if (!annotationsLoaded) {
+        await loadAnnotations();
+      }
+
       const folders = (await list(C.DROPBOX_FOLDER))
-        .filter(entry => entry[".tag"] === "folder");
+        .filter(entry =>
+          entry[".tag"] === "folder" &&
+          !entry.name.startsWith("_")
+        );
 
       books = (await Promise.all(folders.map(async folder => {
         try {
           const markdown = await text(folder.path_lower + "/companion.md");
           const {meta} = frontMatter(markdown);
+
           const cover = await imageUrl(
             folder.path_lower + "/" + (meta.cover || "cover.jpg")
           );
@@ -395,6 +579,7 @@
       renderLibrary();
     } catch (error) {
       e.grid.innerHTML = `<p>${escapeHtml(error.message)}</p>`;
+
       if (/connected/i.test(error.message)) {
         e.connect.hidden = false;
       }
@@ -402,7 +587,8 @@
   }
 
   function renderLibrary() {
-    e.grid.innerHTML = books.length ? "" : "<p>No commentaries found.</p>";
+    e.grid.innerHTML =
+      books.length ? "" : "<p>No commentaries found.</p>";
 
     books.forEach(book => {
       const button = document.createElement("button");
@@ -423,7 +609,7 @@
     });
   }
 
-  function openBook(book) {
+  function openBook(book, target = null) {
     current = book;
 
     const {meta, body} = frontMatter(book.markdown);
@@ -442,16 +628,57 @@
 
     enhanceCallouts();
     buildContents();
+    applyHighlightsForCurrentBook();
 
     show(e.reader);
 
     requestAnimationFrame(() => {
-      scrollTo(0, Number(localStorage.getItem(KEYS.position + book.path) || 0));
+      if (target?.highlightId) {
+        const highlight =
+          e.body.querySelector(
+            `mark.user-highlight[data-highlight-id="${CSS.escape(target.highlightId)}"]`
+          );
+
+        if (highlight) {
+          highlight.scrollIntoView({block: "center", behavior: "auto"});
+          return;
+        }
+      }
+
+      if (target?.anchor && target.anchor !== "__top") {
+        const heading = document.getElementById(target.anchor);
+
+        if (heading) {
+          heading.scrollIntoView({block: "start", behavior: "auto"});
+          return;
+        }
+
+        if (target.heading) {
+          const fallback = [...e.body.querySelectorAll("h1,h2,h3")]
+            .find(h => h.textContent.trim() === target.heading);
+
+          if (fallback) {
+            fallback.scrollIntoView({block: "start", behavior: "auto"});
+            return;
+          }
+        }
+      }
+
+      if (target?.anchor === "__top") {
+        scrollTo(0, 0);
+        return;
+      }
+
+      scrollTo(
+        0,
+        Number(localStorage.getItem(KEYS.position + book.path) || 0)
+      );
     });
   }
 
   function buildContents() {
     const seen = {};
+
     const headings = [...e.body.querySelectorAll("h1, h2, h3")]
       .filter(heading => !heading.closest(".footnotes"));
 
@@ -490,6 +717,624 @@
     e.toc.classList.remove("open");
     e.toc.setAttribute("aria-hidden", "true");
     e.tocBackdrop.hidden = true;
+  }
+
+  function currentSection() {
+    if (!current || e.reader.hidden) {
+      return {anchor: "__top", heading: "Start"};
+    }
+
+    const headings = [...e.body.querySelectorAll("h1,h2,h3")]
+      .filter(heading => !heading.closest(".footnotes"));
+
+    let selected = null;
+
+    for (const heading of headings) {
+      if (heading.getBoundingClientRect().top <= 110) {
+        selected = heading;
+      } else {
+        break;
+      }
+    }
+
+    if (!selected) {
+      return {anchor: "__top", heading: "Start"};
+    }
+
+    return {
+      anchor: selected.id,
+      heading: selected.textContent.trim()
+    };
+  }
+
+  function bookmarkForCurrentSection() {
+    if (!current) return null;
+
+    const section = currentSection();
+
+    return annotations.bookmarks.find(bookmark =>
+      bookmark.bookPath === current.path &&
+      bookmark.anchor === section.anchor
+    ) || null;
+  }
+
+  function updateBookmarkButton() {
+    if (!e.bookmarkButton || e.bookmarkButton.hidden || !current) return;
+
+    const existing = bookmarkForCurrentSection();
+    e.bookmarkButton.classList.toggle("active", !!existing);
+    e.bookmarkButton.setAttribute(
+      "aria-label",
+      existing ? "Remove bookmark" : "Bookmark this section"
+    );
+    e.bookmarkButton.title =
+      existing ? "Remove bookmark" : "Bookmark this section";
+  }
+
+  async function toggleBookmark() {
+    if (!current) return;
+
+    const section = currentSection();
+    const existingIndex = annotations.bookmarks.findIndex(bookmark =>
+      bookmark.bookPath === current.path &&
+      bookmark.anchor === section.anchor
+    );
+
+    if (existingIndex >= 0) {
+      annotations.bookmarks.splice(existingIndex, 1);
+      updateBookmarkButton();
+      showToast("Bookmark removed.");
+    } else {
+      annotations.bookmarks.push({
+        id: crypto.randomUUID?.() || `bookmark-${Date.now()}`,
+        type: "bookmark",
+        bookPath: current.path,
+        bookTitle: current.title,
+        anchor: section.anchor,
+        heading: section.heading,
+        created: new Date().toISOString()
+      });
+
+      updateBookmarkButton();
+      showToast("Bookmarked.");
+    }
+
+    try {
+      await persistAnnotations();
+    } catch {}
+  }
+
+  function renderSaved(kind) {
+    const source =
+      kind === "bookmarks"
+        ? [...annotations.bookmarks]
+        : [...annotations.highlights];
+
+    e.savedTitle.textContent =
+      kind === "bookmarks" ? "Bookmarks" : "Highlights";
+
+    source.sort((a, b) =>
+      String(b.created || "").localeCompare(String(a.created || ""))
+    );
+
+    e.savedList.innerHTML = "";
+
+    if (!source.length) {
+      e.savedList.innerHTML =
+        `<div class="savedEmpty">No ${kind} yet.</div>`;
+      return;
+    }
+
+    source.forEach(item => {
+      const wrapper = document.createElement("div");
+      wrapper.className = "savedItem";
+      wrapper.tabIndex = 0;
+      wrapper.setAttribute("role", "button");
+
+      const title =
+        kind === "bookmarks"
+          ? escapeHtml(item.heading || "Start")
+          : escapeHtml(item.sectionHeading || "Highlight");
+
+      const quote =
+        kind === "highlights"
+          ? `<div class="savedItemQuote">“${escapeHtml(item.quote)}”</div>`
+          : "";
+
+      wrapper.innerHTML = `
+        <div class="savedItemBook">${escapeHtml(item.bookTitle || "Book")}</div>
+        <div class="savedItemTitle">${title}</div>
+        ${quote}
+        <button class="savedItemDelete" type="button" aria-label="Delete">×</button>
+      `;
+
+      const open = () => openSavedItem(kind, item);
+
+      wrapper.addEventListener("click", event => {
+        if (event.target.closest(".savedItemDelete")) return;
+        open();
+      });
+
+      wrapper.addEventListener("keydown", event => {
+        if (event.key === "Enter" || event.key === " ") {
+          event.preventDefault();
+          open();
+        }
+      });
+
+      wrapper.querySelector(".savedItemDelete")
+        .addEventListener("click", async event => {
+          event.stopPropagation();
+
+          if (kind === "bookmarks") {
+            annotations.bookmarks =
+              annotations.bookmarks.filter(x => x.id !== item.id);
+          } else {
+            annotations.highlights =
+              annotations.highlights.filter(x => x.id !== item.id);
+          }
+
+          renderSaved(kind);
+
+          try {
+            await persistAnnotations();
+            showToast(kind === "bookmarks"
+              ? "Bookmark removed."
+              : "Highlight removed.");
+          } catch {}
+        });
+
+      e.savedList.appendChild(wrapper);
+    });
+  }
+
+  function openSaved(kind) {
+    renderSaved(kind);
+    e.savedDialog.showModal();
+  }
+
+  function openSavedItem(kind, item) {
+    const book = books.find(candidate => candidate.path === item.bookPath);
+
+    if (!book) {
+      showToast("That book is not currently in the library.");
+      return;
+    }
+
+    e.savedDialog.close();
+
+    if (kind === "bookmarks") {
+      openBook(book, {
+        anchor: item.anchor,
+        heading: item.heading
+      });
+    } else {
+      openBook(book, {
+        highlightId: item.id,
+        anchor: item.sectionAnchor,
+        heading: item.sectionHeading
+      });
+    }
+  }
+
+  function normalizeText(value) {
+    return String(value || "")
+      .replace(/\s+/g, " ")
+      .trim();
+  }
+
+  function textNodeAllowed(node) {
+    const element = node.parentElement;
+    if (!element) return false;
+
+    if (
+      element.closest(".footnotes") ||
+      element.closest(".callout-label") ||
+      element.closest("sup") ||
+      element.closest("button") ||
+      element.closest("script") ||
+      element.closest("style")
+    ) {
+      return false;
+    }
+
+    return true;
+  }
+
+  function buildTextIndex() {
+    const walker = document.createTreeWalker(
+      e.body,
+      NodeFilter.SHOW_TEXT,
+      {
+        acceptNode(node) {
+          return textNodeAllowed(node)
+            ? NodeFilter.FILTER_ACCEPT
+            : NodeFilter.FILTER_REJECT;
+        }
+      }
+    );
+
+    let textValue = "";
+    const positions = [];
+    let node;
+
+    while ((node = walker.nextNode())) {
+      const value = node.nodeValue || "";
+
+      for (let offset = 0; offset < value.length; offset++) {
+        const char = value[offset];
+
+        if (/\s/.test(char)) {
+          if (textValue && !textValue.endsWith(" ")) {
+            textValue += " ";
+            positions.push({node, offset});
+          }
+        } else {
+          textValue += char;
+          positions.push({node, offset});
+        }
+      }
+    }
+
+    return {text: textValue, positions};
+  }
+
+  function indexForBoundary(index, node, offset, direction = "start") {
+    if (!node) return -1;
+
+    if (node.nodeType !== Node.TEXT_NODE) {
+      const walker = document.createTreeWalker(
+        node,
+        NodeFilter.SHOW_TEXT,
+        {
+          acceptNode(candidate) {
+            return textNodeAllowed(candidate)
+              ? NodeFilter.FILTER_ACCEPT
+              : NodeFilter.FILTER_REJECT;
+          }
+        }
+      );
+
+      node = walker.nextNode();
+      offset = direction === "start" ? 0 : (node?.nodeValue?.length || 0);
+    }
+
+    if (!node) return -1;
+
+    if (direction === "start") {
+      for (let i = 0; i < index.positions.length; i++) {
+        const position = index.positions[i];
+
+        if (position.node === node && position.offset >= offset) {
+          return i;
+        }
+      }
+    } else {
+      for (let i = index.positions.length - 1; i >= 0; i--) {
+        const position = index.positions[i];
+
+        if (position.node === node && position.offset < offset) {
+          return i + 1;
+        }
+      }
+    }
+
+    return -1;
+  }
+
+  function sectionForNode(node) {
+    const headings = [...e.body.querySelectorAll("h1,h2,h3")]
+      .filter(heading => !heading.closest(".footnotes"));
+
+    let selected = null;
+
+    for (const heading of headings) {
+      const relation = heading.compareDocumentPosition(node);
+
+      if (relation & Node.DOCUMENT_POSITION_FOLLOWING) {
+        selected = heading;
+      }
+    }
+
+    return selected
+      ? {anchor: selected.id, heading: selected.textContent.trim()}
+      : {anchor: "__top", heading: "Start"};
+  }
+
+  function captureSelection() {
+    pendingHighlight = null;
+    hideSelectionToolbar();
+
+    if (!current || e.reader.hidden) return;
+
+    const selection = window.getSelection();
+
+    if (!selection || selection.rangeCount === 0 || selection.isCollapsed) {
+      return;
+    }
+
+    const range = selection.getRangeAt(0);
+
+    if (
+      !e.body.contains(range.commonAncestorContainer) ||
+      range.commonAncestorContainer.parentElement?.closest(".footnotes")
+    ) {
+      return;
+    }
+
+    const selectedMarks = [...e.body.querySelectorAll("mark.user-highlight")];
+
+    if (
+      selectedMarks.some(mark =>
+        selection.containsNode(mark, true) ||
+        mark.contains(range.startContainer) ||
+        mark.contains(range.endContainer)
+      )
+    ) {
+      return;
+    }
+
+    const quote = normalizeText(selection.toString());
+
+    if (!quote || quote.length < 2) return;
+
+    const index = buildTextIndex();
+    let start = indexForBoundary(
+      index,
+      range.startContainer,
+      range.startOffset,
+      "start"
+    );
+    let end = indexForBoundary(
+      index,
+      range.endContainer,
+      range.endOffset,
+      "end"
+    );
+
+    if (start < 0 || end <= start) {
+      const fallback = index.text.indexOf(quote);
+      if (fallback < 0) return;
+
+      start = fallback;
+      end = fallback + quote.length;
+    }
+
+    const match = normalizeText(index.text.slice(start, end));
+    if (!match) return;
+
+    const section = sectionForNode(range.startContainer);
+
+    pendingHighlight = {
+      quote,
+      match,
+      prefix: normalizeText(index.text.slice(Math.max(0, start - 70), start)),
+      suffix: normalizeText(index.text.slice(end, Math.min(index.text.length, end + 70))),
+      sectionAnchor: section.anchor,
+      sectionHeading: section.heading
+    };
+
+    e.selectionToolbar.hidden = false;
+  }
+
+  function hideSelectionToolbar() {
+    e.selectionToolbar.hidden = true;
+  }
+
+  function candidateMatch(record, index) {
+    const needle = record.match || normalizeText(record.quote);
+    if (!needle) return null;
+
+    const starts = [];
+    let from = 0;
+
+    while (true) {
+      const found = index.text.indexOf(needle, from);
+      if (found < 0) break;
+
+      starts.push(found);
+      from = found + Math.max(1, needle.length);
+    }
+
+    if (!starts.length) return null;
+    if (starts.length === 1) {
+      return {start: starts[0], end: starts[0] + needle.length};
+    }
+
+    let best = null;
+
+    for (const start of starts) {
+      const end = start + needle.length;
+      const before = normalizeText(
+        index.text.slice(Math.max(0, start - 70), start)
+      );
+      const after = normalizeText(
+        index.text.slice(end, Math.min(index.text.length, end + 70))
+      );
+
+      let score = 0;
+
+      if (record.prefix && before.endsWith(record.prefix.slice(-50))) {
+        score += 2;
+      }
+
+      if (record.suffix && after.startsWith(record.suffix.slice(0, 50))) {
+        score += 2;
+      }
+
+      if (!best || score > best.score) {
+        best = {start, end, score};
+      }
+    }
+
+    return best;
+  }
+
+  function wrapIndexedRange(index, start, end, highlightId) {
+    const groups = new Map();
+
+    for (let i = start; i < end && i < index.positions.length; i++) {
+      const position = index.positions[i];
+      const currentGroup = groups.get(position.node) || {
+        node: position.node,
+        start: position.offset,
+        end: position.offset + 1
+      };
+
+      currentGroup.start = Math.min(currentGroup.start, position.offset);
+      currentGroup.end = Math.max(currentGroup.end, position.offset + 1);
+
+      groups.set(position.node, currentGroup);
+    }
+
+    const ordered = [...groups.values()];
+
+    for (let i = ordered.length - 1; i >= 0; i--) {
+      const group = ordered[i];
+
+      if (
+        !group.node.isConnected ||
+        group.node.parentElement?.closest("mark.user-highlight")
+      ) {
+        continue;
+      }
+
+      const range = document.createRange();
+      range.setStart(group.node, group.start);
+      range.setEnd(group.node, group.end);
+
+      const mark = document.createElement("mark");
+      mark.className = "user-highlight";
+      mark.dataset.highlightId = highlightId;
+
+      try {
+        range.surroundContents(mark);
+      } catch {}
+    }
+  }
+
+  function applyHighlight(record) {
+    if (record.bookPath !== current?.path) return false;
+
+    const index = buildTextIndex();
+    const match = candidateMatch(record, index);
+
+    if (!match) return false;
+
+    wrapIndexedRange(index, match.start, match.end, record.id);
+    return true;
+  }
+
+  function applyHighlightsForCurrentBook() {
+    if (!current) return;
+
+    annotations.highlights
+      .filter(highlight => highlight.bookPath === current.path)
+      .forEach(highlight => applyHighlight(highlight));
+  }
+
+  async function savePendingHighlight() {
+    if (!pendingHighlight || !current) return;
+
+    const record = {
+      id: crypto.randomUUID?.() || `highlight-${Date.now()}`,
+      type: "highlight",
+      bookPath: current.path,
+      bookTitle: current.title,
+      ...pendingHighlight,
+      created: new Date().toISOString()
+    };
+
+    annotations.highlights.push(record);
+    hideSelectionToolbar();
+
+    const selection = window.getSelection();
+    selection?.removeAllRanges();
+
+    applyHighlight(record);
+    pendingHighlight = null;
+
+    showToast("Highlighted.");
+
+    try {
+      await persistAnnotations();
+    } catch {}
+  }
+
+  function openHighlight(highlightId) {
+    const record = annotations.highlights.find(
+      highlight => highlight.id === highlightId
+    );
+
+    if (!record) return;
+
+    currentHighlightId = highlightId;
+    e.highlightQuote.textContent = `“${record.quote}”`;
+    e.highlightDialog.showModal();
+  }
+
+  async function removeCurrentHighlight() {
+    if (!currentHighlightId) return;
+
+    annotations.highlights =
+      annotations.highlights.filter(
+        highlight => highlight.id !== currentHighlightId
+      );
+
+    const marks = [
+      ...e.body.querySelectorAll(
+        `mark.user-highlight[data-highlight-id="${CSS.escape(currentHighlightId)}"]`
+      )
+    ];
+
+    marks.forEach(mark => {
+      const parent = mark.parentNode;
+
+      while (mark.firstChild) {
+        parent.insertBefore(mark.firstChild, mark);
+      }
+
+      mark.remove();
+      parent.normalize();
+    });
+
+    currentHighlightId = null;
+    e.highlightDialog.close();
+    showToast("Highlight removed.");
+
+    try {
+      await persistAnnotations();
+    } catch {}
+  }
+
+  function openFootnote(link) {
+    const href = link.getAttribute("href");
+    if (!href || !href.startsWith("#")) return;
+
+    const note = document.getElementById(href.slice(1));
+    if (!note) return;
+
+    const clone = note.cloneNode(true);
+    clone.querySelectorAll(".footnote-back").forEach(back => back.remove());
+
+    currentFootnoteTarget = note.id;
+
+    e.footnoteTitle.textContent =
+      `Note ${link.dataset.footnoteNumber || ""}`.trim();
+
+    e.footnoteBody.innerHTML = clone.innerHTML;
+    e.footnoteDialog.showModal();
+  }
+
+  function goToFootnote() {
+    if (!currentFootnoteTarget) return;
+
+    const note = document.getElementById(currentFootnoteTarget);
+    e.footnoteDialog.close();
+
+    if (note) {
+      note.scrollIntoView({block: "center", behavior: "auto"});
+    }
   }
 
   const DEFAULT_SETTINGS = {
@@ -532,7 +1377,10 @@
       settings.theme === "dark" ? "dark" : "light";
 
     document.querySelector('meta[name="theme-color"]')
-      ?.setAttribute("content", settings.theme === "dark" ? "#181817" : "#f3f0e9");
+      ?.setAttribute(
+        "content",
+        settings.theme === "dark" ? "#181817" : "#f3f0e9"
+      );
 
     document.querySelectorAll("[data-font]").forEach(button => {
       button.setAttribute(
@@ -567,6 +1415,9 @@
     localStorage.removeItem(KEYS.refresh);
     localStorage.removeItem(KEYS.expires);
 
+    annotationsLoaded = false;
+    annotations = {version: 1, bookmarks: [], highlights: []};
+
     updateConnectionUI();
 
     if (returnHome) {
@@ -580,8 +1431,12 @@
   e.connectWelcome.addEventListener("click", connectDropbox);
 
   $("refresh").addEventListener("click", loadLibrary);
+
   $("home").addEventListener("click", () => {
-    if (localStorage.getItem(KEYS.token) || localStorage.getItem(KEYS.refresh)) {
+    if (
+      localStorage.getItem(KEYS.token) ||
+      localStorage.getItem(KEYS.refresh)
+    ) {
       loadLibrary();
     } else {
       show(e.welcome);
@@ -593,6 +1448,10 @@
   e.tocButton.addEventListener("click", openContents);
   e.closeToc.addEventListener("click", closeContents);
   e.tocBackdrop.addEventListener("click", closeContents);
+
+  e.bookmarkButton.addEventListener("click", toggleBookmark);
+  e.bookmarksView.addEventListener("click", () => openSaved("bookmarks"));
+  e.highlightsView.addEventListener("click", () => openSaved("highlights"));
 
   e.settingsButton.addEventListener("click", () => {
     applySettings();
@@ -614,15 +1473,54 @@
     if (button) saveSettings({theme: button.dataset.themeChoice});
   });
 
-  e.disconnect.addEventListener("click", () => disconnectDropbox(true));
+  e.disconnect.addEventListener(
+    "click",
+    () => disconnectDropbox(true)
+  );
+
+  e.goToFootnote.addEventListener("click", goToFootnote);
+  e.highlightSelection.addEventListener("click", savePendingHighlight);
+  e.removeHighlight.addEventListener("click", removeCurrentHighlight);
+
+  e.body.addEventListener("click", event => {
+    const footnote = event.target.closest(".footnote-ref a");
+
+    if (footnote) {
+      event.preventDefault();
+      openFootnote(footnote);
+      return;
+    }
+
+    const highlight = event.target.closest("mark.user-highlight");
+
+    if (highlight) {
+      openHighlight(highlight.dataset.highlightId);
+    }
+  });
+
+  document.addEventListener("selectionchange", () => {
+    clearTimeout(document._marginaliaSelectionTimer);
+
+    document._marginaliaSelectionTimer =
+      setTimeout(captureSelection, 120);
+  });
 
   addEventListener("keydown", event => {
-    if (event.key === "Escape") closeContents();
+    if (event.key === "Escape") {
+      closeContents();
+      hideSelectionToolbar();
+    }
   });
 
   addEventListener("scroll", () => {
     if (current && !e.reader.hidden) {
-      localStorage.setItem(KEYS.position + current.path, String(scrollY));
+      localStorage.setItem(
+        KEYS.position + current.path,
+        String(scrollY)
+      );
+
+      updateBookmarkButton();
+      hideSelectionToolbar();
     }
   }, {passive: true});
 
@@ -633,7 +1531,10 @@
       await finishOAuth();
       updateConnectionUI();
 
-      if (localStorage.getItem(KEYS.token) || localStorage.getItem(KEYS.refresh)) {
+      if (
+        localStorage.getItem(KEYS.token) ||
+        localStorage.getItem(KEYS.refresh)
+      ) {
         await loadLibrary();
       } else {
         show(e.welcome);

@@ -1,33 +1,58 @@
-# Marginalia — v0.1.3
+# Marginalia — v0.1.4
 
-## GitHub patch
-
-Replace:
+## Replace in GitHub
 
 - `index.html`
 - `styles.css`
 - `app.js`
 
-Do **not** replace `config.js`, the icon files, or the manifest.
+Do **not** replace `config.js`, the icon files, the manifest, or `companion.md`.
 
-## Dropbox commentary
+## Dropbox permission required for bookmarks and highlights
 
-Replace the current `Against Empathy/companion.md` with `companion-v1.2.md`
-and rename it back to `companion.md`.
+In the Dropbox App Console, enable:
 
-The commentary wording is unchanged. This only corrects the Markdown footnote
-definitions that had accidentally been stored with literal `\\n` characters.
+- `files.metadata.read`
+- `files.content.read`
+- `files.content.write`
 
-## Changes
+After enabling `files.content.write`, existing authorization does not gain the
+new permission automatically. In Marginalia:
 
-- Fixed footnote rendering so internal labels such as `[^book]`,
-  `[^bloom2017]`, and `[^measurement]` become numbered superscript notes.
-- Footnotes work in ordinary paragraphs, callouts, and list content.
-- Repeated citations reuse the same note number and have backlinks.
-- Added EB Garamond.
-- Added Merriweather.
-- Retained Georgia, Literata, and Bookerly.
-- Expanded text-size choices to 15, 17, 19, 21, 23, 25, 27, 29, and 31 px.
+1. Open **Aa**.
+2. Choose **Disconnect Dropbox**.
+3. Connect Dropbox again once.
 
-Bookerly still uses the locally installed font when available and otherwise
-falls back to Literata.
+The app then keeps bookmarks and highlights in:
+
+`/Marginalia/_marginalia.json`
+
+No database is used.
+
+## v0.1.4 changes
+
+### Footnotes
+- Tapping a footnote number now opens the note in place.
+- On mobile the note appears as a bottom sheet.
+- The Notes section remains at the end of the commentary.
+- **Go to note** is available when a full jump is wanted.
+- Footnote numbers and return arrows have larger mobile hit targets.
+
+### Bookmarks
+- A bookmark button appears while reading.
+- It bookmarks the current section rather than a fragile pixel position.
+- Tapping the button again removes the bookmark.
+- The Library has a **Bookmarks** view.
+- Bookmarks are synced through Dropbox.
+
+### Highlights
+- Select text and a **Highlight** control appears.
+- Highlights are restored when the book is reopened.
+- The Library has a **Highlights** view.
+- Clicking an existing highlight offers **Remove highlight**.
+- Highlights store the selected quotation plus surrounding context rather than
+  raw character positions, making them more resilient to typography changes.
+- Highlights are synced through Dropbox.
+
+The app still keeps ordinary reading position and typography settings locally
+on each device.

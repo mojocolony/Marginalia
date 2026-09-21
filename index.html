@@ -29,6 +29,11 @@
 
     <nav class="topActions" aria-label="App controls">
       <button id="tocButton" class="topButton" type="button" hidden>Contents</button>
+      <button id="bookmarkButton" class="topButton iconOnlyButton bookmarkButton" type="button" aria-label="Bookmark this section" title="Bookmark this section" hidden>
+        <svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="m19 21-7-4-7 4V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"></path>
+        </svg>
+      </button>
       <button id="settingsButton" class="topButton aaButton" type="button" aria-label="Reading settings" hidden>Aa</button>
       <button id="connect" class="topButton" type="button">Connect Dropbox</button>
     </nav>
@@ -49,7 +54,11 @@
           <p class="kicker">LIBRARY</p>
           <h1>Marginalia</h1>
         </div>
-        <button id="refresh" class="quietButton" type="button">Refresh</button>
+        <div class="libraryActions">
+          <button id="bookmarksView" class="quietButton" type="button">Bookmarks</button>
+          <button id="highlightsView" class="quietButton" type="button">Highlights</button>
+          <button id="refresh" class="quietButton" type="button">Refresh</button>
+        </div>
       </div>
       <div id="grid"></div>
     </section>
@@ -119,6 +128,49 @@
       </div>
     </form>
   </dialog>
+
+
+  <dialog id="footnoteDialog" class="noteDialog">
+    <form method="dialog">
+      <div class="dialogHeader">
+        <strong id="footnoteTitle">Note</strong>
+        <button class="closeButton" value="cancel" aria-label="Close note">×</button>
+      </div>
+      <div id="footnoteBody" class="noteDialogBody"></div>
+      <div class="dialogFooter noteDialogFooter">
+        <button id="goToFootnote" class="quietButton" type="button">Go to note</button>
+      </div>
+    </form>
+  </dialog>
+
+  <dialog id="savedDialog" class="savedDialog">
+    <form method="dialog">
+      <div class="dialogHeader">
+        <strong id="savedTitle">Bookmarks</strong>
+        <button class="closeButton" value="cancel" aria-label="Close">×</button>
+      </div>
+      <div id="savedList" class="savedList"></div>
+    </form>
+  </dialog>
+
+  <dialog id="highlightDialog" class="noteDialog">
+    <form method="dialog">
+      <div class="dialogHeader">
+        <strong>Highlight</strong>
+        <button class="closeButton" value="cancel" aria-label="Close highlight">×</button>
+      </div>
+      <blockquote id="highlightQuote" class="highlightQuote"></blockquote>
+      <div class="dialogFooter">
+        <button id="removeHighlight" class="dangerButton" type="button">Remove highlight</button>
+      </div>
+    </form>
+  </dialog>
+
+  <div id="selectionToolbar" class="selectionToolbar" hidden>
+    <button id="highlightSelection" type="button">Highlight</button>
+  </div>
+
+  <div id="toast" class="toast" role="status" aria-live="polite" hidden></div>
 
   <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
   <script src="config.js"></script>
