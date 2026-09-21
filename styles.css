@@ -1289,3 +1289,139 @@ button { color: inherit; cursor: pointer; background: none; border: 0; }
     font-size: 15px;
   }
 }
+
+
+/* v0.1.9 — lock the mobile reader to the viewport */
+
+html,
+body {
+  width: 100%;
+  max-width: 100%;
+  overflow-x: hidden;
+  overscroll-behavior-x: none;
+}
+
+body {
+  touch-action: pan-y pinch-zoom;
+}
+
+main,
+#reader,
+#reader article,
+#bookHead,
+#content {
+  min-width: 0;
+  max-width: 100%;
+}
+
+#reader {
+  overflow-x: hidden;
+}
+
+/* Long source URLs and other unbroken strings in notes must never widen the
+   document. A single long URL at the bottom of a commentary can otherwise
+   make the entire page horizontally pannable on iOS Safari. */
+#content a,
+#content .footnotes a,
+#content code,
+#content pre {
+  overflow-wrap: anywhere;
+  word-break: break-word;
+  max-width: 100%;
+}
+
+#content img,
+#content video,
+#content iframe,
+#content table {
+  max-width: 100%;
+}
+
+#content pre {
+  white-space: pre-wrap;
+}
+
+@media (max-width: 640px) {
+  /* Keep the app identity visible on normal phones. It was deliberately
+     hidden in earlier builds, not disappearing because of dark mode. */
+  .brand span {
+    display: inline;
+    font-size: 15px;
+  }
+
+  .topbar {
+    padding-left: 12px;
+    padding-right: 12px;
+  }
+
+  .brand {
+    gap: 7px;
+    min-width: 0;
+  }
+
+  .brandIcon {
+    width: 23px;
+    height: 23px;
+  }
+
+  .topActions {
+    gap: 6px;
+    flex: 0 0 auto;
+  }
+
+  .topButton {
+    padding: 7px 8px;
+    font-size: 13px;
+  }
+
+  .iconOnlyButton {
+    width: 40px;
+  }
+
+  .aaButton {
+    min-width: 40px;
+  }
+
+  #reader article {
+    width: calc(100% - 32px);
+    max-width: calc(100% - 32px);
+    margin-left: auto;
+    margin-right: auto;
+  }
+
+  #content {
+    width: 100%;
+    max-width: 100%;
+    overflow-x: hidden;
+  }
+
+  #content p,
+  #content li,
+  #content blockquote,
+  #content h1,
+  #content h2,
+  #content h3 {
+    max-width: 100%;
+  }
+}
+
+/* On genuinely narrow phones, protect the reading controls first. */
+@media (max-width: 365px) {
+  .brand span {
+    display: none;
+  }
+
+  .topbar {
+    padding-left: 10px;
+    padding-right: 10px;
+  }
+
+  .topActions {
+    gap: 4px;
+  }
+
+  .topButton {
+    padding-left: 7px;
+    padding-right: 7px;
+  }
+}

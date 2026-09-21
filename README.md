@@ -1,57 +1,35 @@
-# Marginalia — v0.1.8
+# Marginalia — v0.1.9
 
 ## Replace in GitHub
 
-- `index.html`
 - `styles.css`
-- `app.js`
 
-Do **not** replace `config.js`, icons, manifest, or any commentary file.
+No other file needs to change.
 
-## Library cleanup
+## Mobile reader fix
 
-- Removed the redundant large **Marginalia** wordmark from the Library page.
-  The app name already lives in the top bar.
-- The Library page now has a compact **Library** heading.
-- Desktop book cards use fixed-width columns instead of stretching when there
-  are only one or two books.
-- Every card has the same cover frame.
-- Titles reserve two lines, so one-line and two-line titles keep their authors
-  aligned.
-- Covers use `object-fit: contain`, so different cover proportions do not get
-  cropped.
+The reader could become wider than the phone viewport because long, unbroken
+source URLs in the Notes section expanded the document width. On iOS Safari
+that made the whole page horizontally pannable, so touching or dragging could
+shift the reading column around.
 
-## Mobile Library
+v0.1.9:
 
-- The Library actions are now a tidy 2×2 grid:
-  **Bookmarks · Highlights · Refresh · Dropbox**.
-- Book cards remain a two-column grid but use equal cover frames and aligned
-  title/author areas.
-- Tap targets are at least 44 px for the Library controls.
-- Added a global `[hidden]` rule. This fixes the bookmark button appearing in
-  the top bar on the Library screen on iPhone.
+- locks the document and reader to the viewport width;
+- disables horizontal page panning while preserving vertical scrolling and
+  pinch zoom;
+- forces long URLs and other unbroken strings to wrap;
+- constrains media, tables, and code blocks to the reading width;
+- keeps the reading article explicitly inside the mobile viewport.
 
-## Dropbox connection and recovery
+## Mobile app name
 
-- **Dropbox** is now an explicit Library control.
-- It opens a connection panel showing whether Marginalia is connected.
-- The panel provides both **Reconnect Dropbox** and **Disconnect Dropbox**.
-- Old expired access tokens without a refresh token are now treated as
-  disconnected instead of leaving Marginalia stuck with no way to reconnect.
-- Dropbox failures no longer replace the entire Library with
-  “Dropbox request failed.”
-- If a cached Library exists, it remains visible and usable while a compact
-  notice offers **Retry** and **Reconnect**.
-- Error messages now distinguish expired authorization, missing permissions,
-  missing Dropbox folders, rate limits, and network failures where possible.
-- Disconnecting clears the cached Library/covers so switching Dropbox accounts
-  cannot expose stale cards from the previous account.
+Earlier builds deliberately hid the word **Marginalia** on screens under
+640 px. It was not dark-on-dark.
 
-## Performance
+v0.1.9 restores **Marginalia** beside the icon on normal phone widths and only
+hides the text as a last-resort fallback below 365 px so the Navigation,
+bookmark, and Aa controls still fit.
 
-- Annotation loading and the Dropbox folder listing now run in parallel during
-  a full refresh.
-- Cached Library behaviour from v0.1.5 remains unchanged.
-
-After GitHub Pages deploys, do one hard refresh on each device because earlier
-Marginalia builds have been cached aggressively.
+After GitHub Pages deploys, hard-refresh Safari once because the stylesheet may
+still be cached.
