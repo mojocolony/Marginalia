@@ -1,0 +1,20 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="theme-color" content="#f3f0e9">
+<title>Marginalia</title><link rel="stylesheet" href="styles.css">
+</head>
+<body>
+<header><button id="home" class="brand">Marginalia</button><nav><button id="tocButton" hidden>Contents</button><button id="themeButton">Aa</button><button id="connect">Connect Dropbox</button></nav></header>
+<main>
+<section id="welcome"><p class="kicker">PERSONAL READING LIBRARY</p><h1>Your Marginalia companions, kept in Dropbox.</h1><p>Markdown stays portable and editable. The app supplies the library, navigation and reading interface.</p><button id="connect2" class="primary">Connect Dropbox</button><div id="status"></div></section>
+<section id="library" hidden><div class="libraryHead"><div><p class="kicker">LIBRARY</p><h1>Marginalias</h1></div><button id="refresh">Refresh</button></div><div id="grid"></div></section>
+<section id="reader" hidden>
+<aside id="toc"><strong>Contents</strong><nav id="tocLinks"></nav></aside>
+<article><button id="back">← Library</button><div id="bookHead"></div><div id="content"></div></article>
+</section>
+</main>
+<script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+<script src="config.js"></script><script src="app.js"></script>
+</body></html>
