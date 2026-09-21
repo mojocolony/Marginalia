@@ -1,4 +1,4 @@
-# Marginalia — v0.1.5
+# Marginalia — v0.1.6
 
 ## Replace in GitHub
 
@@ -6,42 +6,30 @@
 - `styles.css`
 - `app.js`
 
-Do **not** replace `config.js`, icons, manifest, or any `companion.md`.
+Do **not** replace `config.js`, icons, manifest, or `companion.md`.
 
-## Faster Library
+## Changes
 
-Marginalia now caches the Library catalogue locally.
+### Navigation
+- The top **Contents** button is now **Navigation**.
+- The drawer heading is also **Navigation**.
+- The internal tabs remain **Contents · Bookmarks · Highlights**.
 
-- On subsequent launches the Library appears immediately from cache.
-- Cached covers are restored from the browser cache.
-- Returning from a book with **← Library** no longer contacts Dropbox.
-- Opening Marginalia performs only a lightweight background check for
-  added/removed book folders.
-- Existing `companion.md` files are not downloaded just to draw the Library.
-- A commentary is downloaded when its book is actually opened.
-- **Refresh** explicitly re-reads book metadata and covers from Dropbox.
+### Highlighting
+- Selecting text now places the **Highlight** control next to the selection.
+- Marginalia intelligently places it above or below the selected text.
+- If the browser cannot provide a reliable selection rectangle, or there is
+  not enough room, Marginalia falls back to the bottom floating control.
+- The toolbar preserves the selection when clicked.
 
-The first Library load after installing v0.1.5 may still take about as long as
-before because the cache has to be created once.
+### Visible bookmarks
+- Lucide's **Bookmark** icon now appears beside every bookmarked section
+  heading in the reading page.
+- On desktop it sits in the left margin.
+- On narrow/mobile layouts it sits inline with the heading.
+- Clicking the visible page marker removes that bookmark.
+- Bookmark lists use the same icon for visual consistency.
+- The top toolbar bookmark remains outline/filled according to the current
+  section's bookmark state.
 
-## In-book navigation
-
-The Contents drawer now has three tabs:
-
-- **Contents**
-- **Bookmarks**
-- **Highlights**
-
-Bookmarks and highlights shown there belong only to the open book. Tapping one
-jumps directly to it.
-
-The Library-level **Bookmarks** and **Highlights** buttons remain available for
-viewing annotations across the whole collection.
-
-## Existing annotation storage
-
-Bookmarks and highlights still sync through:
-
-`/Marginalia/_marginalia.json`
-
-No database is used.
+No Dropbox or commentary changes are required for this version.

@@ -408,6 +408,64 @@
     "'": "&#39;"
   }[char]));
 
+  const BOOKMARK_ICON_SVG = `
+    <svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor"
+      stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+      <path d="m19 21-7-4-7 4V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"></path>
+    </svg>`;
+
+  function renderPageBookmarks() {
+    if (!current) return;
+
+    e.body
+      .querySelectorAll(".pageBookmarkMarker")
+      .forEach(marker => marker.remove());
+
+    const bookBookmarks = annotations.bookmarks
+      .filter(bookmark => bookmark.bookPath === current.path);
+
+    bookBookmarks.forEach(bookmark => {
+      if (!bookmark.anchor || bookmark.anchor === "__top") return;
+
+      const heading = document.getElementById(bookmark.anchor);
+      if (!heading) return;
+
+      const button = document.createElement("button");
+      button.type = "button";
+      button.className = "pageBookmarkMarker";
+      button.innerHTML = BOOKMARK_ICON_SVG;
+      button.setAttribute("aria-label", `Remove bookmark: ${bookmark.heading || heading.textContent.trim()}`);
+      button.title = "Remove bookmark";
+
+      button.addEventListener("click", async event => {
+        event.preventDefault();
+        event.stopPropagation();
+
+        annotations.bookmarks =
+          annotations.bookmarks.filter(item => item.id !== bookmark.id);
+
+        renderPageBookmarks();
+        renderBookAnnotations();
+        updateBookmarkButton();
+        showToast("Bookmark removed.");
+
+        try {
+          await persistAnnotations();
+        } catch {}
+      });
+
+      heading.insertBefore(button, heading.firstChild);
+    });
+  }
+
+  function bookmarkIconInline() {
+    return `<svg class="savedBookmarkIcon" viewBox="0 0 24 24" aria-hidden="true"
+      fill="currentColor" stroke="currentColor" stroke-width="2"
+      stroke-linecap="round" stroke-linejoin="round">
+      <path d="m19 21-7-4-7 4V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"></path>
+    </svg>`;
+  }
+
   function extractFootnotes(markdown) {
     markdown = markdown
       .replace(/\\n\\n(?=\[\^[^\]]+\]:)/g, "\n\n")
@@ -547,6 +605,7 @@
     if (current && !e.reader.hidden) {
       applyHighlightsForCurrentBook();
       renderBookAnnotations();
+      renderPageBookmarks();
     }
   }
 
@@ -793,6 +852,7 @@
     buildContents();
     applyHighlightsForCurrentBook();
     renderBookAnnotations();
+    renderPageBookmarks();
 
     requestAnimationFrame(() => {
       if (target?.highlightId) {
@@ -957,8 +1017,10 @@
           ? `<div class="drawerSavedItemQuote">“${escapeHtml(item.quote)}”</div>`
           : "";
 
+      const icon = kind === "bookmarks" ? bookmarkIconInline() : "";
+
       wrapper.innerHTML = `
-        <div class="drawerSavedItemTitle">${title}</div>
+        <div class="drawerSavedItemTitle">${icon}${title}</div>
         ${quote}
         <button class="drawerSavedDelete" type="button" aria-label="Delete">×</button>
       `;
@@ -1006,6 +1068,7 @@
 
           renderBookAnnotations();
           updateBookmarkButton();
+          renderPageBookmarks();
 
           try {
             await persistAnnotations();
@@ -1086,6 +1149,7 @@
       annotations.bookmarks.splice(existingIndex, 1);
       updateBookmarkButton();
       renderBookAnnotations();
+      renderPageBookmarks();
       showToast("Bookmark removed.");
     } else {
       annotations.bookmarks.push({
@@ -1100,6 +1164,7 @@
 
       updateBookmarkButton();
       renderBookAnnotations();
+      renderPageBookmarks();
       showToast("Bookmarked.");
     }
 
@@ -1145,9 +1210,11 @@
           ? `<div class="savedItemQuote">“${escapeHtml(item.quote)}”</div>`
           : "";
 
+      const icon = kind === "bookmarks" ? bookmarkIconInline() : "";
+
       wrapper.innerHTML = `
         <div class="savedItemBook">${escapeHtml(item.bookTitle || "Book")}</div>
-        <div class="savedItemTitle">${title}</div>
+        <div class="savedItemTitle">${icon}${title}</div>
         ${quote}
         <button class="savedItemDelete" type="button" aria-label="Delete">×</button>
       `;
@@ -1418,11 +1485,68 @@
       sectionHeading: section.heading
     };
 
+    positionSelectionToolbar(range);
+  }
+
+  function positionSelectionToolbar(range) {
+    const rect = range?.getBoundingClientRect?.();
+
+    e.selectionToolbar.classList.remove("fallbackBottom");
+    e.selectionToolbar.style.left = "0px";
+    e.selectionToolbar.style.top = "0px";
+    e.selectionToolbar.style.bottom = "auto";
     e.selectionToolbar.hidden = false;
+
+    if (
+      !rect ||
+      !Number.isFinite(rect.left) ||
+      !Number.isFinite(rect.top) ||
+      (rect.width === 0 && rect.height === 0)
+    ) {
+      e.selectionToolbar.classList.add("fallbackBottom");
+      return;
+    }
+
+    requestAnimationFrame(() => {
+      if (e.selectionToolbar.hidden) return;
+
+      const toolbarWidth = e.selectionToolbar.offsetWidth;
+      const toolbarHeight = e.selectionToolbar.offsetHeight;
+      const margin = 8;
+      const gap = 9;
+
+      let left =
+        rect.left + (rect.width / 2) - (toolbarWidth / 2);
+
+      left = Math.max(
+        margin,
+        Math.min(left, window.innerWidth - toolbarWidth - margin)
+      );
+
+      let top = rect.top - toolbarHeight - gap;
+
+      if (top < margin) {
+        top = rect.bottom + gap;
+      }
+
+      if (top + toolbarHeight > window.innerHeight - margin) {
+        e.selectionToolbar.classList.add("fallbackBottom");
+        e.selectionToolbar.style.left = "";
+        e.selectionToolbar.style.top = "";
+        return;
+      }
+
+      e.selectionToolbar.style.left = `${Math.round(left)}px`;
+      e.selectionToolbar.style.top = `${Math.round(top)}px`;
+    });
   }
 
   function hideSelectionToolbar() {
     e.selectionToolbar.hidden = true;
+    e.selectionToolbar.classList.remove("fallbackBottom");
+    e.selectionToolbar.style.left = "";
+    e.selectionToolbar.style.top = "";
+    e.selectionToolbar.style.bottom = "";
   }
 
   function candidateMatch(record, index) {
@@ -1795,6 +1919,10 @@
   );
 
   e.goToFootnote.addEventListener("click", goToFootnote);
+  e.selectionToolbar.addEventListener("pointerdown", event => {
+    event.preventDefault();
+  });
+
   e.highlightSelection.addEventListener("click", savePendingHighlight);
   e.removeHighlight.addEventListener("click", removeCurrentHighlight);
 
