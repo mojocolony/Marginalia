@@ -1,37 +1,29 @@
-# Marginalia — v0.1.11
+# Marginalia — v0.1.12
 
 ## Replace in GitHub
 
 - `app.js`
 
-No CSS, HTML, config, icon, manifest, or commentary files need to change.
+No other files need to change.
 
-## Dropbox fix
+## Fix: incomplete book folders no longer break Dropbox
 
-v0.1.10 made Dropbox folder detection too clever and too brittle. This version
-removes that assumption.
+The Dropbox connection was working. The problem was that Marginalia treated
+**every folder inside `/Marginalia` as a finished book**.
 
-Marginalia now:
+The new `The Life You Can Save` folder exists in Dropbox, but it does not yet
+contain `companion.md`. Marginalia tried to download that missing file, Dropbox
+correctly returned `path_not_found`, and the app incorrectly surfaced that as a
+library/connection failure.
 
-1. accepts either the newer `window.MARGINALIA_CONFIG` **or** the original
-   `window.READING_COMPANION_CONFIG`, so an older `config.js` cannot silently
-   break Dropbox;
-2. tries both historical library-folder names (`/Marginalia` and
-   `/Reading Companions`);
-3. if neither exists, searches Dropbox for the actual `companion.md` files and
-   infers the library root from their real paths;
-4. still supports Dropbox **App Folder** access, where the API root is already
-   the Marginalia folder;
-5. keeps a temporary backup of the OAuth PKCE verifier in localStorage as well
-   as sessionStorage, making the Dropbox return trip more reliable on mobile
-   Safari.
+v0.1.12 changes the rule:
 
-The public Dropbox app key already used by Marginalia is also retained as a
-last-resort fallback if an older cached config file exposes the old variable
-name.
+- a folder is a book only after it contains `companion.md`;
+- incomplete folders are quietly ignored;
+- they automatically appear after `companion.md` is added and the Library is
+  refreshed;
+- a missing `cover.jpg` also no longer breaks the Library; Marginalia will use
+  its normal text placeholder instead.
 
-This update does not change reading layout, reading-position persistence,
-bookmarks, highlights, or the v0.1.10 mobile toolbar fix.
-
-After deployment, hard-refresh once. Then press **Reconnect** once on a device
-that is showing the old folder warning.
+No reconnect should be necessary. After deployment, hard-refresh once and press
+**Refresh**.

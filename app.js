@@ -220,7 +220,7 @@
       (lower.includes("path/not_found") ||
        lower.includes("not_found"))
     ) {
-      return "Marginalia could not locate the Dropbox library automatically. Retry once; if it persists, reconnect Dropbox.";
+      return "A Dropbox item Marginalia expected could not be found. Refresh the Library.";
     }
 
     if (status === 429) {
@@ -999,12 +999,34 @@
       };
     }
 
-    // A brand-new book needs one metadata read. After that, its title/author
-    // are cached locally and future Library loads do not fetch companion.md.
-    const markdown = await text(folder.path_lower + "/companion.md");
+    // A Dropbox folder becomes a Marginalia book only when companion.md
+    // exists. This lets a user create a folder and add a cover before the
+    // commentary is ready without breaking the entire Library.
+    let markdown;
+
+    try {
+      markdown = await text(folder.path_lower + "/companion.md");
+    } catch (error) {
+      if (isDropboxPathNotFound(error)) {
+        return null;
+      }
+      throw error;
+    }
+
     const {meta} = frontMatter(markdown);
     const coverPath =
       folder.path_lower + "/" + (meta.cover || "cover.jpg");
+
+    let cover = null;
+
+    try {
+      cover = await imageUrl(coverPath);
+    } catch (error) {
+      // A missing cover should never prevent a valid commentary from loading.
+      if (!isDropboxPathNotFound(error)) {
+        throw error;
+      }
+    }
 
     return {
       path: folder.path_lower,
@@ -1012,7 +1034,7 @@
       author: meta.author || "",
       coverPath,
       markdown: null,
-      cover: await imageUrl(coverPath)
+      cover
     };
   }
 
