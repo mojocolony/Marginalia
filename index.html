@@ -1,20 +1,120 @@
 <!doctype html>
 <html lang="en">
 <head>
-<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<meta name="theme-color" content="#f3f0e9">
-<title>Marginalia</title><link rel="stylesheet" href="styles.css">
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+  <meta name="theme-color" content="#f3f0e9">
+  <title>Marginalia</title>
+
+  <link rel="icon" href="icon.svg" type="image/svg+xml">
+  <link rel="apple-touch-icon" href="icon-180.png">
+  <link rel="manifest" href="manifest.webmanifest">
+
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Literata:opsz,wght@7..72,400;7..72,600;7..72,700&display=swap" rel="stylesheet">
+
+  <link rel="stylesheet" href="styles.css">
 </head>
 <body>
-<header><button id="home" class="brand">Marginalia</button><nav><button id="tocButton" hidden>Contents</button><button id="themeButton">Aa</button><button id="connect">Connect Dropbox</button></nav></header>
-<main>
-<section id="welcome"><p class="kicker">PERSONAL READING LIBRARY</p><h1>Your book commentaries, kept in Dropbox.</h1><p>Markdown stays portable and editable. The app supplies the library, navigation and reading interface.</p><button id="connect2" class="primary">Connect Dropbox</button><div id="status"></div></section>
-<section id="library" hidden><div class="libraryHead"><div><p class="kicker">LIBRARY</p><h1>Marginalia</h1></div><button id="refresh">Refresh</button></div><div id="grid"></div></section>
-<section id="reader" hidden>
-<aside id="toc"><strong>Contents</strong><nav id="tocLinks"></nav></aside>
-<article><button id="back">← Library</button><div id="bookHead"></div><div id="content"></div></article>
-</section>
-</main>
-<script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
-<script src="config.js"></script><script src="app.js"></script>
-</body></html>
+  <header class="topbar">
+    <button id="home" class="brand" type="button" aria-label="Marginalia library">
+      <svg class="brandIcon" aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <rect width="8" height="18" x="3" y="3" rx="1"></rect>
+        <path d="M7 3v18"></path>
+        <path d="M20.4 18.9c.2.5-.1 1.1-.6 1.3l-1.9.7c-.5.2-1.1-.1-1.3-.6L11.1 5.1c-.2-.5.1-1.1.6-1.3l1.9-.7c.5-.2 1.1.1 1.3.6Z"></path>
+      </svg>
+      <span>Marginalia</span>
+    </button>
+
+    <nav class="topActions" aria-label="App controls">
+      <button id="tocButton" class="topButton" type="button" hidden>Contents</button>
+      <button id="settingsButton" class="topButton aaButton" type="button" aria-label="Reading settings" hidden>Aa</button>
+      <button id="connect" class="topButton" type="button">Connect Dropbox</button>
+    </nav>
+  </header>
+
+  <main>
+    <section id="welcome">
+      <p class="kicker">PERSONAL READING LIBRARY</p>
+      <h1>Your book commentaries, kept in Dropbox.</h1>
+      <p>Markdown stays portable and editable. Marginalia supplies the library, navigation, typography, and reading interface.</p>
+      <button id="connect2" class="primary" type="button">Connect Dropbox</button>
+      <div id="status" role="status"></div>
+    </section>
+
+    <section id="library" hidden>
+      <div class="libraryHead">
+        <div>
+          <p class="kicker">LIBRARY</p>
+          <h1>Marginalia</h1>
+        </div>
+        <button id="refresh" class="quietButton" type="button">Refresh</button>
+      </div>
+      <div id="grid"></div>
+    </section>
+
+    <section id="reader" hidden>
+      <aside id="toc" aria-label="Table of contents" aria-hidden="true">
+        <div class="tocHeader">
+          <strong>Contents</strong>
+          <button id="closeToc" class="closeButton" type="button" aria-label="Close contents">×</button>
+        </div>
+        <nav id="tocLinks"></nav>
+      </aside>
+      <button id="tocBackdrop" class="tocBackdrop" type="button" aria-label="Close contents" hidden></button>
+
+      <article>
+        <button id="back" class="backButton" type="button">← Library</button>
+        <div id="bookHead"></div>
+        <div id="content"></div>
+      </article>
+    </section>
+  </main>
+
+  <dialog id="settingsDialog" class="settingsDialog">
+    <form method="dialog">
+      <div class="dialogHeader">
+        <strong>Reading settings</strong>
+        <button class="closeButton" value="cancel" aria-label="Close reading settings">×</button>
+      </div>
+
+      <fieldset>
+        <legend>Typeface</legend>
+        <div class="choiceRow" id="fontChoices">
+          <button type="button" data-font="georgia">Georgia</button>
+          <button type="button" data-font="literata">Literata</button>
+          <button type="button" data-font="bookerly">Bookerly</button>
+        </div>
+        <p class="settingNote">Bookerly is used when it is installed on this device; otherwise Marginalia falls back to Literata.</p>
+      </fieldset>
+
+      <fieldset>
+        <legend>Text size</legend>
+        <div class="choiceRow" id="sizeChoices">
+          <button type="button" data-size="17">17</button>
+          <button type="button" data-size="19">19</button>
+          <button type="button" data-size="21">21</button>
+          <button type="button" data-size="23">23</button>
+        </div>
+      </fieldset>
+
+      <fieldset>
+        <legend>Appearance</legend>
+        <div class="choiceRow" id="themeChoices">
+          <button type="button" data-theme-choice="light">Light</button>
+          <button type="button" data-theme-choice="dark">Dark</button>
+        </div>
+      </fieldset>
+
+      <div class="dialogFooter">
+        <button id="disconnect" class="dangerButton" type="button">Disconnect Dropbox</button>
+      </div>
+    </form>
+  </dialog>
+
+  <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+  <script src="config.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>

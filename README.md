@@ -1,55 +1,39 @@
-# Marginalia — v0.1.0
+# Marginalia — v0.1.2
 
-A small Dropbox-backed personal library for long-form Markdown book companions.
+This patch replaces the UI files from v0.1.1.
 
-**Suggested GitHub repository:** `marginalia`  
-**Repository description:** `A personal Dropbox-backed library for long-form book Marginalia companions.`
+## Replace in GitHub
 
-## Dropbox structure
+- `index.html`
+- `styles.css`
+- `app.js`
 
-    Marginalias/
-        Against Empathy/
-            companion.md
-            cover.jpg
-        Another Book/
-            companion.md
-            cover.jpg
+## Add to GitHub
 
-Each `companion.md` begins with:
+- `icon.svg`
+- `icon-180.png`
+- `icon-192.png`
+- `icon-512.png`
+- `manifest.webmanifest`
 
-    ---
-    title: Against Empathy
-    subtitle: The Case for Rational Compassion
-    author: Paul Bloom
-    year: 2016
-    companion_version: 1.0
-    cover: cover.jpg
-    ---
+Do **not** replace `config.js`.
 
-## Dropbox setup
+## Changes
 
-1. Create a Dropbox API app in the Dropbox App Console.
-2. Choose **Scoped access** and **Full Dropbox**.
-3. Enable `files.metadata.read` and `files.content.read`.
-4. Copy the **App key** into `config.js`.
-5. Upload the four app files to GitHub and enable GitHub Pages.
-6. Add the exact deployed GitHub Pages URL as a **Redirect URI** in the Dropbox app console.
-7. Open the app and choose **Connect Dropbox**.
+- Contents is now a working drawer on desktop and mobile.
+- Contents typography is larger.
+- The Aa button opens reading settings instead of switching directly to dark mode.
+- Reading settings now include:
+  - Georgia
+  - Literata
+  - Bookerly (when installed locally; otherwise Literata fallback)
+  - 17, 19, 21, and 23 px text sizes
+  - Light and dark modes
+- Settings persist in local storage.
+- The Dropbox connection button disappears after connection.
+- Dropbox OAuth now requests an offline refresh token so future sessions can renew access automatically.
+  - Existing users may need to connect one more time after their old access token expires before persistent renewal is available.
+- Disconnect Dropbox is available inside Reading settings.
+- Lucide `library-big` is now used for the app/header icon, favicon, Apple touch icon, and web-app manifest icons.
 
-The app key is a public browser-client identifier. **Do not put an app secret or access token in the repository.**
-
-## First-build features
-
-- Dropbox-backed library
-- one folder per book
-- Markdown as canonical source
-- optional cover image
-- automatic library generation
-- responsive reading view
-- automatic table of contents
-- remembered reading position
-- light/dark reading mode
-
-There is no database, no Supabase and no editing interface.
-
-`marked` is loaded from jsDelivr for Markdown rendering.
+`companion.md` does not need to change for this update.
