@@ -3,7 +3,31 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
-  <meta name="theme-color" content="#f3f0e9">
+  <meta name="theme-color" content="#fffdfa">
+  <script>
+    // Apply the saved reading theme before first paint. This also lets iOS
+    // use the correct page/theme colour for the safe area around the status
+    // bar instead of briefly retaining the previous theme.
+    (() => {
+      try {
+        const saved = JSON.parse(localStorage.getItem("marginalia.settings") || "{}");
+        const theme = ["light", "sepia", "grey", "dark", "eink"].includes(saved.theme)
+          ? saved.theme
+          : "light";
+        const colors = {
+          light: "#fffdfa",
+          sepia: "#f4eddf",
+          grey: "#e6ecf2",
+          dark: "#181817",
+          eink: "#ffffff"
+        };
+        document.documentElement.dataset.theme = theme;
+        document.documentElement.style.backgroundColor = colors[theme];
+        document.querySelector('meta[name="theme-color"]')
+          ?.setAttribute("content", colors[theme]);
+      } catch {}
+    })();
+  </script>
   <title>Marginalia</title>
 
   <link rel="icon" href="icon.svg" type="image/svg+xml">

@@ -1572,3 +1572,23 @@ body {
     padding-right: 8px;
   }
 }
+
+
+/* v0.1.15 — cover alignment + full-theme canvas */
+html {
+  background-color: var(--bg);
+}
+
+/* Align the visible title/author block with the inset cover artwork rather
+   than the outside edge of the cover frame. */
+.bookMeta {
+  padding-left: 11px;
+  padding-right: 11px;
+}
+
+@media (max-width: 640px) {
+  .bookMeta {
+    padding-left: 7px;
+    padding-right: 7px;
+  }
+}

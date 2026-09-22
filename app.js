@@ -106,6 +106,7 @@
   let annotationsLoaded = false;
   let saveQueue = Promise.resolve();
   let toastTimer = null;
+  let positionWritesSuspended = false;
 
   let annotations = {
     version: 1,
@@ -1143,29 +1144,158 @@
       e.grid.appendChild(button);
     });
   }
-  function readingPositionKey(book = current) {
+  function stableReadingPositionKey(book = current) {
+    if (!book) return null;
+
+    // The child-folder name is stable even when Dropbox exposes the app folder
+    // once as /Marginalia/... and another time as API-root /....
+    const folderName = String(book.path || "")
+      .split("/")
+      .filter(Boolean)
+      .pop()
+      ?.trim()
+      .toLowerCase();
+
+    const fallback = `${String(book.title || "").trim().toLowerCase()}::${String(book.author || "").trim().toLowerCase()}`;
+    return KEYS.position + "v2." + encodeURIComponent(folderName || fallback);
+  }
+
+  function legacyReadingPositionKey(book = current) {
     return book ? KEYS.position + book.path : null;
   }
 
-  function saveReadingPosition() {
-    if (!current || e.reader.hidden) return;
+  function currentScrollY() {
+    return Math.max(0, window.scrollY || document.documentElement.scrollTop || 0);
+  }
 
-    const key = readingPositionKey();
+  function captureReadingPosition() {
+    const y = currentScrollY();
+    const topGuide = y + 92;
+    const headings = [...e.body.querySelectorAll("h1,h2,h3")]
+      .filter(heading => !heading.closest(".footnotes"));
+
+    let nearest = null;
+    for (const heading of headings) {
+      const headingY = heading.getBoundingClientRect().top + y;
+      if (headingY <= topGuide) nearest = {heading, headingY};
+      else break;
+    }
+
+    if (nearest?.heading?.id) {
+      return {
+        version: 2,
+        y,
+        anchor: nearest.heading.id,
+        offset: y - nearest.headingY
+      };
+    }
+
+    const contentY = e.body.getBoundingClientRect().top + y;
+    return {
+      version: 2,
+      y,
+      anchor: "__content",
+      offset: y - contentY
+    };
+  }
+
+  function saveReadingPosition() {
+    if (positionWritesSuspended || !current || e.reader.hidden) return;
+
+    const key = stableReadingPositionKey();
     if (!key) return;
 
-    localStorage.setItem(key, String(window.scrollY || document.documentElement.scrollTop || 0));
+    try {
+      localStorage.setItem(key, JSON.stringify(captureReadingPosition()));
+    } catch {
+      // A numeric fallback preserves the old behaviour if storage ever rejects
+      // the structured record.
+      localStorage.setItem(key, String(currentScrollY()));
+    }
+  }
+
+  function readReadingPosition(book) {
+    const stableKey = stableReadingPositionKey(book);
+    const legacyKey = legacyReadingPositionKey(book);
+    let raw =
+      (stableKey && localStorage.getItem(stableKey)) ||
+      (legacyKey && localStorage.getItem(legacyKey));
+
+    // Recover positions saved by builds that sometimes saw the Dropbox app
+    // folder as /Marginalia/... and sometimes as API-root /....
+    if (raw == null && book?.path) {
+      const folderName = String(book.path)
+        .split("/")
+        .filter(Boolean)
+        .pop()
+        ?.toLowerCase();
+
+      if (folderName) {
+        for (let i = 0; i < localStorage.length; i++) {
+          const key = localStorage.key(i);
+          if (!key?.startsWith(KEYS.position) || key.includes(KEYS.position + "v2.")) continue;
+
+          const savedFolder = key
+            .slice(KEYS.position.length)
+            .split("/")
+            .filter(Boolean)
+            .pop()
+            ?.toLowerCase();
+
+          if (savedFolder === folderName) {
+            raw = localStorage.getItem(key);
+            break;
+          }
+        }
+      }
+    }
+
+    if (raw == null) return null;
+
+    try {
+      const parsed = JSON.parse(raw);
+      if (parsed && typeof parsed === "object") return parsed;
+    } catch {}
+
+    const y = Number(raw);
+    return Number.isFinite(y) ? {version: 1, y} : null;
   }
 
   function restoreReadingPosition(book) {
-    const key = readingPositionKey(book);
-    if (!key) return;
+    const saved = readReadingPosition(book);
+    if (!saved) {
+      window.scrollTo(0, 0);
+      return;
+    }
 
-    const saved = Number(localStorage.getItem(key) || 0);
-    window.scrollTo(0, Number.isFinite(saved) ? saved : 0);
+    let y = Number(saved.y) || 0;
+
+    if (saved.version === 2 && Number.isFinite(Number(saved.offset))) {
+      const offset = Number(saved.offset);
+
+      if (saved.anchor === "__content") {
+        y = e.body.getBoundingClientRect().top + currentScrollY() + offset;
+      } else if (saved.anchor) {
+        const anchor = document.getElementById(saved.anchor);
+        if (anchor) {
+          y = anchor.getBoundingClientRect().top + currentScrollY() + offset;
+        }
+      }
+    }
+
+    const maxY = Math.max(0, document.documentElement.scrollHeight - window.innerHeight);
+    window.scrollTo(0, Math.min(Math.max(0, y), maxY));
   }
 
   async function openBook(book, target = null) {
+    // Do not let the library page's scroll position overwrite the saved book
+    // position while the reader is being rebuilt.
+    if (current && !e.reader.hidden && current !== book) {
+      saveReadingPosition();
+    }
+
     current = book;
+    positionWritesSuspended = true;
     show(e.reader);
 
     if (!book.markdown) {
@@ -1180,6 +1310,7 @@
         book.markdown = await text(book.path + "/companion.md");
       } catch (error) {
         e.body.innerHTML = `<p>${escapeHtml(error.message)}</p>`;
+        positionWritesSuspended = false;
         return;
       }
     }
@@ -1212,7 +1343,9 @@
     renderBookAnnotations();
     renderPageBookmarks();
 
-    requestAnimationFrame(() => {
+    const finishOpen = () => {
+      let positioned = false;
+
       if (target?.highlightId) {
         const highlight =
           e.body.querySelector(
@@ -1221,35 +1354,52 @@
 
         if (highlight) {
           highlight.scrollIntoView({block: "center", behavior: "auto"});
-          return;
+          positioned = true;
         }
       }
 
-      if (target?.anchor && target.anchor !== "__top") {
+      if (!positioned && target?.anchor && target.anchor !== "__top") {
         const heading = document.getElementById(target.anchor);
 
         if (heading) {
           heading.scrollIntoView({block: "start", behavior: "auto"});
-          return;
-        }
-
-        if (target.heading) {
+          positioned = true;
+        } else if (target.heading) {
           const fallback = [...e.body.querySelectorAll("h1,h2,h3")]
             .find(h => h.textContent.trim() === target.heading);
 
           if (fallback) {
             fallback.scrollIntoView({block: "start", behavior: "auto"});
-            return;
+            positioned = true;
           }
         }
       }
 
-      if (target?.anchor === "__top") {
+      if (!positioned && target?.anchor === "__top") {
         scrollTo(0, 0);
-        return;
+        positioned = true;
       }
 
-      restoreReadingPosition(book);
+      if (!positioned) {
+        restoreReadingPosition(book);
+      }
+
+      requestAnimationFrame(() => {
+        positionWritesSuspended = false;
+        saveReadingPosition();
+        updateBookmarkButton();
+      });
+    };
+
+    // Wait for the selected reader font before restoring an anchor-relative
+    // position. This prevents a late font swap from moving the passage after
+    // the saved location has been restored.
+    const fontsReady = document.fonts?.ready
+      ? document.fonts.ready.catch(() => {})
+      : Promise.resolve();
+
+    requestAnimationFrame(() => {
+      fontsReady.then(() => requestAnimationFrame(finishOpen));
     });
   }
   function buildContents() {
@@ -2189,6 +2339,8 @@
       dark: "#181817",
       eink: "#ffffff"
     };
+
+    document.documentElement.style.backgroundColor = themeColors[theme];
 
     document.querySelector('meta[name="theme-color"]')
       ?.setAttribute("content", themeColors[theme]);
