@@ -1,35 +1,22 @@
-# Marginalia — v0.1.15
+# Marginalia — v0.1.16
 
-Replace these three files in GitHub:
+Replace `app.js` in GitHub with the included file.
 
-- `index.html`
-- `styles.css`
-- `app.js`
+## Change
 
-## Changes
+### Alphabetical library sorting ignores leading articles
+Books are now alphabetized by title while ignoring the English leading articles:
 
-### Library card alignment
-The title and author are now inset by the same amount as the cover artwork, so
-their left edge aligns with the visible cover rather than the outside edge of
-the cover frame.
+- `A`
+- `An`
+- `The`
 
-### Full theme background on iPhone/iPad
-The saved theme is applied before first paint and the root page canvas now uses
-the active theme background. This is intended to keep the safe/status-bar area
-around the Dynamic Island visually continuous with Marginalia rather than
-retaining the previous theme colour.
+The displayed title itself is unchanged. For example:
 
-### Reading-position persistence
-Reading position has been rebuilt to be more robust:
+- *The Alignment Problem* sorts under **A**
+- *The Creative Act* sorts under **C**
+- *A Farewell to Arms* sorts under **F**
 
-- prevents the Library's scroll position from overwriting a saved book position
-  while a book is opening;
-- saves a structured section-relative position plus an absolute fallback;
-- uses a stable per-book key that survives Dropbox exposing `/Marginalia/...`
-  versus app-root `/...` paths;
-- can recover reading positions saved by older path-based builds;
-- waits for the reading font to finish loading before restoring position;
-- continues to save on scroll, page hide, and app/background transitions.
+The same rule is applied both to freshly loaded Dropbox books and to the cached library shown on startup.
 
-No Dropbox authentication, bookmark, highlight, or commentary-file logic was
-changed in this build.
+No Dropbox, reading-position, annotation, cover, or layout logic was changed.

@@ -1087,7 +1087,7 @@
 
       const refreshed = discovered
         .filter(Boolean)
-        .sort((a, b) => a.title.localeCompare(b.title));
+        .sort(compareBookTitles);
 
       books = refreshed;
       writeLibraryCache(books);
@@ -1118,11 +1118,33 @@
       e.library?.classList?.remove("libraryRefreshing");
     }
   }
+  function titleSortKey(title = "") {
+    return String(title)
+      .trim()
+      .replace(/^(?:the|an|a)\s+/i, "")
+      .trim();
+  }
+
+  function compareBookTitles(a, b) {
+    const aTitle = String(a?.title || "");
+    const bTitle = String(b?.title || "");
+    const primary = titleSortKey(aTitle).localeCompare(
+      titleSortKey(bTitle),
+      undefined,
+      {sensitivity: "base", numeric: true}
+    );
+
+    return primary || aTitle.localeCompare(bTitle, undefined, {
+      sensitivity: "base",
+      numeric: true
+    });
+  }
+
   function renderLibrary() {
     e.grid.innerHTML =
       books.length ? "" : "<p>No commentaries found.</p>";
 
-    books.forEach(book => {
+    books.slice().sort(compareBookTitles).forEach(book => {
       const button = document.createElement("button");
       button.className = "book";
       button.type = "button";
