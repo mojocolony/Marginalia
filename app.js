@@ -761,13 +761,11 @@
 
   function extractFootnotes(markdown) {
     markdown = markdown
-      .replace(/\\n\\n(?=\[\^[^\]]+\]:)/g, "\n\n")
-      .replace(/\\n\s*$/g, "");
+      .replace(/\n\n(?=\[\^[^\]]+\]:)/g, "\n\n")
+      .replace(/\n\s*$/g, "");
 
     const definitions = new Map();
-    const numbers = new Map();
-    const order = [];
-    const referenceCounts = new Map();
+    const occurrences = [];
 
     markdown = markdown.replace(
       /^\[\^([^\]]+)\]:\s*(.+)$/gm,
@@ -777,6 +775,9 @@
       }
     );
 
+    // Number every citation occurrence in reading order. Reusing the same
+    // Markdown footnote label later therefore gets the next visible number
+    // instead of jumping back to the original number.
     markdown = markdown.replace(
       /\[\^([^\]]+)\]/g,
       (whole, rawId) => {
@@ -784,49 +785,42 @@
 
         if (!definitions.has(id)) return whole;
 
-        if (!numbers.has(id)) {
-          numbers.set(id, order.length + 1);
-          order.push(id);
-        }
+        const number = occurrences.length + 1;
+        occurrences.push({id, number});
 
-        const number = numbers.get(id);
-        const count = (referenceCounts.get(id) || 0) + 1;
-        referenceCounts.set(id, count);
-
-        const safe = id.replace(/[^a-zA-Z0-9_-]/g, "-");
-
-        return `<sup class="footnote-ref" id="fnref-${safe}-${count}"><a href="#fn-${safe}" aria-label="Footnote ${number}" data-footnote-number="${number}">${number}</a></sup>`;
+        // Word joiner: no visible gap, but no line break may occur between the
+        // cited text/punctuation and its superscript marker.
+        return `&#8288;<sup class="footnote-ref" id="fnref-${number}"><a href="#fn-${number}" aria-label="Footnote ${number}" data-footnote-number="${number}">${number}</a></sup>`;
       }
+    );
+
+    // Fallback for older guides that still contain adjacent citations.
+    markdown = markdown.replace(
+      /<\/sup>&#8288;<sup class="footnote-ref"/g,
+      `</sup>&#8288;<sup class="footnote-separator" aria-hidden="true">,</sup>&#8288;<sup class="footnote-ref"`
     );
 
     return {
       markdown,
       definitions,
-      numbers,
-      order,
-      referenceCounts
+      occurrences
     };
   }
 
   function footnotesHtml(footnotes) {
-    if (!footnotes.order.length) return "";
+    if (!footnotes.occurrences.length) return "";
 
-    const items = footnotes.order.map(id => {
-      const safe = id.replace(/[^a-zA-Z0-9_-]/g, "-");
+    const items = footnotes.occurrences.map(({id, number}) => {
       const content = marked.parseInline(footnotes.definitions.get(id) || "");
-      const count = footnotes.referenceCounts.get(id) || 1;
+      const backlink =
+        `<a class="footnote-back" href="#fnref-${number}" aria-label="Back to reference ${number}">↩</a>`;
 
-      const backlinks = Array.from(
-        {length: count},
-        (_, index) =>
-          `<a class="footnote-back" href="#fnref-${safe}-${index + 1}" aria-label="Back to reference ${index + 1}">↩</a>`
-      ).join(" ");
-
-      return `<li id="fn-${safe}">${content} ${backlinks}</li>`;
+      return `<li id="fn-${number}">${content} ${backlink}</li>`;
     }).join("");
 
     return `<section class="footnotes" aria-label="Notes"><h2>Notes</h2><ol>${items}</ol></section>`;
   }
+
 
   function enhanceCallouts() {
     const labels = {

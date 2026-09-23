@@ -332,7 +332,7 @@ button { color: inherit; cursor: pointer; background: none; border: 0; }
   font-size: .62em;
   line-height: 0;
   vertical-align: super;
-  margin-left: .08em;
+  margin-left: 0;
 }
 
 #content .footnote-ref a {

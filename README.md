@@ -1,22 +1,11 @@
-# Marginalia — v0.1.16
+# Marginalia v0.1.19 patch
 
-Replace `app.js` in GitHub with the included file.
+Replace **both** `app.js` and `styles.css` in the Marginalia GitHub repository.
 
-## Change
+## Footnote fixes
 
-### Alphabetical library sorting ignores leading articles
-Books are now alphabetized by title while ignoring the English leading articles:
+- Footnote markers now sit immediately after the relevant word or punctuation, with no visible space.
+- Footnotes now number by **citation occurrence in reading order**. Reusing the same source later gets the next number instead of jumping back to an earlier footnote number.
+- Older adjacent citation clusters remain non-breaking and comma-separated as a fallback.
 
-- `A`
-- `An`
-- `The`
-
-The displayed title itself is unchanged. For example:
-
-- *The Alignment Problem* sorts under **A**
-- *The Creative Act* sorts under **C**
-- *A Farewell to Arms* sorts under **F**
-
-The same rule is applied both to freshly loaded Dropbox books and to the cached library shown on startup.
-
-No Dropbox, reading-position, annotation, cover, or layout logic was changed.
+No other files need replacing.
