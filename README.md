@@ -1,11 +1,9 @@
-# Marginalia v0.1.19 patch
+# Marginalia v0.1.20 patch
 
-Replace **both** `app.js` and `styles.css` in the Marginalia GitHub repository.
+Fixes disappearing library covers when the local library metadata cache survives but the browser cover-image cache has been cleared.
 
-## Footnote fixes
+## Update
 
-- Footnote markers now sit immediately after the relevant word or punctuation, with no visible space.
-- Footnotes now number by **citation occurrence in reading order**. Reusing the same source later gets the next number instead of jumping back to an earlier footnote number.
-- Older adjacent citation clusters remain non-breaking and comma-separated as a fallback.
+Replace only `app.js` in the GitHub Pages repository with the file in this patch.
 
-No other files need replacing.
+The app now checks its local cover cache first and, when a cached image is missing, automatically downloads that cover from Dropbox and repopulates the cache. No book folders, covers, or companion files need to be changed.

@@ -948,16 +948,23 @@
     for (const book of books) {
       if (book.cover || !book.coverPath) continue;
 
-      const cached = await coverFromCache(book.coverPath);
-      if (!cached) continue;
+      // The Library metadata cache and the browser's cover-image Cache API can
+      // be cleared independently. If the metadata survives but the image cache
+      // does not, recover the cover from Dropbox instead of leaving the title
+      // placeholder on screen indefinitely. imageUrl() re-populates the cache.
+      const cover =
+        (await coverFromCache(book.coverPath)) ||
+        (await imageUrl(book.coverPath));
 
-      book.cover = cached;
+      if (!cover) continue;
+
+      book.cover = cover;
       const slot = e.grid.querySelector(
         `[data-book-path="${CSS.escape(book.path)}"] .coverSlot`
       );
 
       if (slot) {
-        slot.innerHTML = `<img class="coverImage" src="${cached}" alt="">`;
+        slot.innerHTML = `<img class="coverImage" src="${cover}" alt="">`;
       }
     }
   }
