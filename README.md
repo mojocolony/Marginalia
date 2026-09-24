@@ -1,9 +1,12 @@
-# Marginalia v0.1.20 patch
+Marginalia v0.1.21
 
-Fixes disappearing library covers when the local library metadata cache survives but the browser cover-image cache has been cleared.
+Fixes cover startup performance introduced in v0.1.20.
 
-## Update
+Replace only:
+- app.js
 
-Replace only `app.js` in the GitHub Pages repository with the file in this patch.
-
-The app now checks its local cover cache first and, when a cached image is missing, automatically downloads that cover from Dropbox and repopulates the cache. No book folders, covers, or companion files need to be changed.
+What changed:
+- Cached cover images are restored from the browser Cache API in parallel before the Library grid is shown.
+- Healthy cached libraries therefore open with their covers already present instead of painting them in one by one.
+- Only genuinely missing cover images fall back to Dropbox, in the background.
+- Dropbox fallback still repopulates the local cover cache for future launches.

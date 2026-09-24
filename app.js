@@ -944,32 +944,48 @@
     localStorage.setItem(KEYS.libraryCache, JSON.stringify(compact));
   }
 
-  async function hydrateCachedCovers() {
-    for (const book of books) {
-      if (book.cover || !book.coverPath) continue;
+  async function recoverMissingCovers() {
+    const missing = books.filter(book => !book.cover && book.coverPath);
 
-      // The Library metadata cache and the browser's cover-image Cache API can
-      // be cleared independently. If the metadata survives but the image cache
-      // does not, recover the cover from Dropbox instead of leaving the title
-      // placeholder on screen indefinitely. imageUrl() re-populates the cache.
-      const cover =
-        (await coverFromCache(book.coverPath)) ||
-        (await imageUrl(book.coverPath));
+    await Promise.all(
+      missing.map(async book => {
+        // Dropbox recovery is only for a genuinely missing local cover. Keep
+        // this separate from startup so a healthy cache never paints covers
+        // into the grid one by one. imageUrl() also re-populates Cache API.
+        const cover = await imageUrl(book.coverPath);
+        if (!cover) return;
 
-      if (!cover) continue;
+        book.cover = cover;
+        const slot = e.grid.querySelector(
+          `[data-book-path="${CSS.escape(book.path)}"] .coverSlot`
+        );
 
-      book.cover = cover;
-      const slot = e.grid.querySelector(
-        `[data-book-path="${CSS.escape(book.path)}"] .coverSlot`
-      );
-
-      if (slot) {
-        slot.innerHTML = `<img class="coverImage" src="${cover}" alt="">`;
-      }
-    }
+        if (slot) {
+          slot.innerHTML = `<img class="coverImage" src="${cover}" alt="">`;
+        }
+      })
+    );
   }
 
-  function loadCachedLibrary() {
+  async function hydrateCachedCovers() {
+    const unresolved = books.filter(book => !book.cover && book.coverPath);
+
+    // Cache API reads are local and independent, so resolve them together.
+    // This avoids the visible one-by-one cover painting introduced in v0.1.20.
+    await Promise.all(
+      unresolved.map(async book => {
+        book.cover = await coverFromCache(book.coverPath);
+      })
+    );
+
+    renderLibrary();
+
+    // Any cover missing from the local cache can recover from Dropbox after
+    // the cached library is already visible. Do not block startup on network.
+    recoverMissingCovers().catch(() => {});
+  }
+
+  async function loadCachedLibrary() {
     const cached = readLibraryCache();
 
     if (!cached.length) return false;
@@ -980,8 +996,7 @@
       cover: null
     }));
 
-    renderLibrary();
-    hydrateCachedCovers();
+    await hydrateCachedCovers();
     return true;
   }
 
@@ -1053,7 +1068,7 @@
     hideLibraryNotice();
 
     if (!books.length) {
-      const hadCache = loadCachedLibrary();
+      const hadCache = await loadCachedLibrary();
 
       if (!hadCache) {
         e.grid.innerHTML = "<p>Loading library…</p>";
@@ -1103,7 +1118,7 @@
 
       // Keep a cached Library usable instead of replacing it with an error.
       if (!books.length) {
-        const hadCache = loadCachedLibrary();
+        const hadCache = await loadCachedLibrary();
 
         if (!hadCache) {
           e.grid.innerHTML =
@@ -2586,7 +2601,7 @@
         localStorage.getItem(KEYS.token) ||
         localStorage.getItem(KEYS.refresh)
       ) {
-        const hadCache = loadCachedLibrary();
+        const hadCache = await loadCachedLibrary();
 
         if (hadCache) {
           show(e.library);
