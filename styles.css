@@ -1592,3 +1592,40 @@ html {
     padding-right: 7px;
   }
 }
+
+/* Mobile reader: keep chapter headings readable at every text-size setting.
+   Body copy still follows --reader-size; heading sizes depend on viewport
+   instead, so enlarged reading text cannot make titles overflow the screen. */
+@media (max-width: 640px) {
+  #content h1,
+  #content h2,
+  #content h3 {
+    line-height: 1.16;
+    overflow-wrap: anywhere;
+    word-break: normal;
+    text-wrap: balance;
+  }
+
+  #content h1 {
+    font-size: clamp(32px, 9vw, 40px);
+    margin: 1.2em 0 .5em;
+  }
+
+  #content h2 {
+    font-size: clamp(27px, 7.3vw, 34px);
+    margin: 1.1em 0 .45em;
+  }
+
+  #content h3 {
+    font-size: clamp(23px, 6.2vw, 29px);
+    margin: 1em 0 .4em;
+  }
+
+  /* Consecutive part/chapter headings should not be a page apart. */
+  #content h1 + h1,
+  #content h1 + h2,
+  #content h2 + h2,
+  #content h2 + h3 {
+    margin-top: .75em;
+  }
+}
